@@ -15,6 +15,14 @@ private:
         int height
     );
 
+    double scrollOffset = 0.0;
+
+    static void scrollCallback(
+        GLFWwindow* window,
+        double xOffset,
+        double yOffset
+    );
+
 public:
     Window(
         int width,
@@ -23,7 +31,7 @@ public:
     );
 
     ~Window();
-
+    double consumeScroll();
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;
 

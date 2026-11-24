@@ -98,3 +98,7 @@ target_sources(ASCIIEngine PRIVATE
         src/world/World.cpp
         src/entity/Player.cpp
 )
+
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/Camera.cpp
+)

@@ -53,6 +53,13 @@ Window::Window(
         );
     }
 
+    glfwSetWindowUserPointer(window, this);
+
+    glfwSetScrollCallback(
+        window,
+        scrollCallback
+    );
+
     int framebufferWidth;
     int framebufferHeight;
 
@@ -143,4 +150,29 @@ void Window::setTitle(
         window,
         title.c_str()
     );
+}
+
+void Window::scrollCallback(
+    GLFWwindow* window,
+    double xOffset,
+    double yOffset
+)
+{
+    auto* instance = static_cast<Window*>(
+        glfwGetWindowUserPointer(window)
+    );
+
+    if (instance)
+    {
+        instance->scrollOffset += yOffset;
+    }
+}
+
+double Window::consumeScroll()
+{
+    const double offset = scrollOffset;
+
+    scrollOffset = 0.0;
+
+    return offset;
 }
