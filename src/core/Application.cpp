@@ -14,14 +14,18 @@ Application::Application()
       fontAtlas(font),
       glyphRenderer(fontAtlas),
       camera(),
-      world(200, 200),
-      player(2, 2)
+    world(500, 500, 42),
+    player(0, 0)
 {
     renderer.setClearColor(
         0.05f, 0.08f, 0.06f
     );
 
     camera.setZoom(1.0f);
+
+    const auto [spawnX, spawnY] = world.findSpawn();
+
+    player.setPosition(spawnX, spawnY);
 }
 
 void Application::run()
@@ -245,24 +249,44 @@ void Application::renderWorld()
 
             switch (tile.type)
             {
-                case TileType::Ground:
-                    symbol = U'.';
-                    color = {0.3f, 0.4f, 0.2f};
-                    break;
-
-                case TileType::Grass:
-                    symbol = U',';
-                    color = {0.3f, 0.7f, 0.25f};
-                    break;
-
-                case TileType::Tree:
-                    symbol = U'T';
-                    color = {0.2f, 0.65f, 0.2f};
+                case TileType::DeepWater:
+                    symbol = U'~';
+                    color = {0.12f, 0.25f, 0.65f};
                     break;
 
                 case TileType::Water:
                     symbol = U'~';
-                    color = {0.2f, 0.5f, 0.9f};
+                    color = {0.25f, 0.55f, 0.85f};
+                    break;
+
+                case TileType::Sand:
+                    symbol = U':';
+                    color = {0.78f, 0.70f, 0.45f};
+                    break;
+
+                case TileType::Ground:
+                    symbol = U'.';
+                    color = {0.45f, 0.48f, 0.28f};
+                    break;
+
+                case TileType::Grass:
+                    symbol = U',';
+                    color = {0.45f, 0.70f, 0.25f};
+                    break;
+
+                case TileType::Tree:
+                    symbol = U'T';
+                    color = {0.15f, 0.50f, 0.18f};
+                    break;
+
+                case TileType::Rock:
+                    symbol = U'o';
+                    color = {0.55f, 0.55f, 0.55f};
+                    break;
+
+                case TileType::Mountain:
+                    symbol = U'^';
+                    color = {0.75f, 0.75f, 0.75f};
                     break;
 
                 case TileType::Wall:

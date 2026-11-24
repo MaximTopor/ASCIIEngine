@@ -1,12 +1,18 @@
 #include "world/World.hpp"
+#include "world/WorldGenerator.hpp"
 
-#include <random>
 #include <stdexcept>
 #include <cstddef>
+#include <cstdlib>
 
-World::World(int width, int height)
+World::World(
+    int width,
+    int height,
+    int seed
+)
     : width(width),
-      height(height)
+      height(height),
+      seed(seed)
 {
     if (width < 3 || height < 3)
     {
@@ -24,61 +30,18 @@ World::World(int width, int height)
 
 void World::generate()
 {
-    std::mt19937 generator(42);
-
-    std::uniform_int_distribution<int>
-        distribution(0, 99);
+    WorldGenerator generator(seed);
 
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            Tile& tile = tiles[
-                static_cast<std::size_t>(y) * width + x
-            ];
+            const std::size_t index =
+                static_cast<std::size_t>(y)
+                * width + x;
 
-            // World boundaries
-            if (x == 0 || y == 0 ||
-                x == width - 1 ||
-                y == height - 1)
-            {
-                tile.type = TileType::Wall;
-                continue;
-            }
-
-            // River
-            if (x == width * 2 / 3 ||
-                x == width * 2 / 3 + 1)
-            {
-                tile.type = TileType::Water;
-                continue;
-            }
-
-            const int value = distribution(generator);
-
-            if (value < 10)
-            {
-                tile.type = TileType::Tree;
-            }
-            else if (value < 40)
-            {
-                tile.type = TileType::Grass;
-            }
-            else
-            {
-                tile.type = TileType::Ground;
-            }
-        }
-    }
-
-    // Clear the player's starting area
-    for (int y = 1; y <= 3 && y < height - 1; ++y)
-    {
-        for (int x = 1; x <= 3 && x < width - 1; ++x)
-        {
-            tiles[
-                static_cast<std::size_t>(y) * width + x
-            ].type = TileType::Ground;
+            tiles[index] =
+                generator.generateTile(x, y);
         }
     }
 }
@@ -111,6 +74,60 @@ const Tile& World::getTile(int x, int y) const
     return tiles[
         static_cast<std::size_t>(y) * width + x
     ];
+}
+
+std::pair<int, int> World::findSpawn() const
+{
+    const int centerX = width / 2;
+    const int centerY = height / 2;
+
+    int bestX = -1;
+    int bestY = -1;
+    long long bestDistance = -1;
+
+    for (int y = 1; y < height - 1; ++y)
+    {
+        for (int x = 1; x < width - 1; ++x)
+        {
+            if (!isWalkable(x, y))
+            {
+                continue;
+            }
+
+            // Require free adjacent tiles
+
+            if (!isWalkable(x + 1, y) ||
+                !isWalkable(x - 1, y) ||
+                !isWalkable(x, y + 1) ||
+                !isWalkable(x, y - 1))
+            {
+                continue;
+            }
+
+            const long long dx = x - centerX;
+            const long long dy = y - centerY;
+
+            const long long distance =
+                dx * dx + dy * dy;
+
+            if (bestDistance == -1 ||
+                distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestX = x;
+                bestY = y;
+            }
+        }
+    }
+
+    if (bestX == -1)
+    {
+        throw std::runtime_error(
+            "No suitable spawn position found"
+        );
+    }
+
+    return {bestX, bestY};
 }
 
 int World::getWidth() const

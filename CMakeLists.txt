@@ -102,3 +102,9 @@ target_sources(ASCIIEngine PRIVATE
 target_sources(ASCIIEngine PRIVATE
         src/renderer/Camera.cpp
 )
+target_include_directories(ASCIIEngine PRIVATE
+        external/FastNoiseLite
+)
+target_sources(ASCIIEngine PRIVATE
+        src/world/WorldGenerator.cpp
+)

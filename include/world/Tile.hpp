@@ -6,7 +6,12 @@ enum class TileType
     Grass,
     Tree,
     Water,
-    Wall
+    Wall,
+
+    DeepWater,
+    Sand,
+    Rock,
+    Mountain
 };
 
 struct Tile
@@ -15,7 +20,15 @@ struct Tile
 
     bool isWalkable() const
     {
-        return type == TileType::Ground
-            || type == TileType::Grass;
+        switch (type)
+        {
+            case TileType::Ground:
+            case TileType::Grass:
+            case TileType::Sand:
+                return true;
+
+            default:
+                return false;
+        }
     }
 };

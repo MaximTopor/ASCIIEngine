@@ -35,3 +35,8 @@ int Player::getY() const
 {
     return y;
 }
+void Player::setPosition(int x, int y)
+{
+    this->x = x;
+    this->y = y;
+}
