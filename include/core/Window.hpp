@@ -34,4 +34,10 @@ public:
     void pollEvents() const;
 
     bool isKeyPressed(int key) const;
+
+    void getFramebufferSize(
+    int& width,
+    int& height
+    )const;
+    void setTitle(const std::string& title) const;
 };

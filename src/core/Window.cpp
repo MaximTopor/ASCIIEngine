@@ -123,3 +123,24 @@ bool Window::isKeyPressed(int key) const
     return glfwGetKey(window, key) == GLFW_PRESS;
 }
 
+void Window::getFramebufferSize(
+    int& width,
+    int& height
+) const
+{
+    glfwGetFramebufferSize(
+        window,
+        &width,
+        &height
+    );
+}
+
+void Window::setTitle(
+    const std::string& title
+) const
+{
+    glfwSetWindowTitle(
+        window,
+        title.c_str()
+    );
+}
