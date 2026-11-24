@@ -14,6 +14,7 @@ Application::Application()
       ),
       fontAtlas(font),
       glyphRenderer(fontAtlas),
+      backgroundRenderer(),
       camera(),
       worldRenderer(
           glyphRenderer,
@@ -232,16 +233,25 @@ void Application::render()
 {
     int width, height;
 
-    window.getFramebufferSize(width, height);
+    window.getFramebufferSize(
+        width,
+        height
+    );
 
     if (width <= 0 || height <= 0)
     {
         return;
     }
 
-    camera.setViewportSize(width, height);
+    camera.setViewportSize(
+        width,
+        height
+    );
 
-    glyphRenderer.setScreenSize(width, height);
+    glyphRenderer.setScreenSize(
+        width,
+        height
+    );
 
     glyphRenderer.setTime(
         static_cast<float>(glfwGetTime())
@@ -253,7 +263,9 @@ void Application::render()
 
     // Shadows
 
-    glyphRenderer.setOcclusionMap(occlusionMap);
+    glyphRenderer.setOcclusionMap(
+        occlusionMap
+    );
 
     glyphRenderer.setShadowCamera(
         camera,
@@ -263,13 +275,29 @@ void Application::render()
 
     glyphRenderer.setShadowsEnabled(true);
 
+    // Clear screen
+
     renderer.clear();
 
-    // Rendering
+    // Render illuminated background
+
+    backgroundRenderer.render(
+        camera,
+        occlusionMap,
+        width,
+        height,
+        CELL_WIDTH,
+        CELL_HEIGHT
+    );
+
+    // Render ASCII glyphs
 
     glyphRenderer.begin();
 
-    worldRenderer.render(world, camera);
+    worldRenderer.render(
+        world,
+        camera
+    );
 
     renderPlayer();
 
@@ -357,4 +385,9 @@ void Application::updateLighting()
     }
 
     glyphRenderer.setPointLights(lights);
+
+    backgroundRenderer.setLighting(
+        ambient,
+        lights
+    );
 }

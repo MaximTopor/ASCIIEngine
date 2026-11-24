@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Window.hpp"
-
+#include "renderer/BackgroundRenderer.hpp"
 #include "renderer/Renderer.hpp"
 #include "renderer/Font.hpp"
 #include "renderer/FontAtlas.hpp"
@@ -35,7 +35,7 @@ private:
     Font font;
     FontAtlas fontAtlas;
     GlyphRenderer glyphRenderer;
-
+    BackgroundRenderer backgroundRenderer;
     Camera camera;
     WorldRenderer worldRenderer;
 
