@@ -108,3 +108,9 @@ target_include_directories(ASCIIEngine PRIVATE
 target_sources(ASCIIEngine PRIVATE
         src/world/WorldGenerator.cpp
 )
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/WorldRenderer.cpp
+)
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/Lighting.cpp
+)

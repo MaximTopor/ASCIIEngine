@@ -1,8 +1,9 @@
 #include "core/Application.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <string>
+#include <algorithm>
+#include <vector>
 
 Application::Application()
     : window(1280, 720, "ASCII Engine"),
@@ -14,32 +15,51 @@ Application::Application()
       fontAtlas(font),
       glyphRenderer(fontAtlas),
       camera(),
-    world(500, 500, 42),
-    player(0, 0)
+      worldRenderer(
+          glyphRenderer,
+          CELL_WIDTH,
+          CELL_HEIGHT,
+          GLYPH_SCALE
+      ),
+      world(500, 500, 42),
+      player(0, 0)
 {
+    const auto [spawnX, spawnY] = world.findSpawn();
+
+    player.setPosition(spawnX, spawnY);
+
     renderer.setClearColor(
         0.05f, 0.08f, 0.06f
     );
 
     camera.setZoom(1.0f);
-
-    const auto [spawnX, spawnY] = world.findSpawn();
-
-    player.setPosition(spawnX, spawnY);
 }
 
 void Application::run()
 {
     double lastFPSTime = glfwGetTime();
+    double lastFrameTime = lastFPSTime;
 
     int frameCount = 0;
 
     while (!window.shouldClose())
     {
+        const double frameTime = glfwGetTime();
+
+        const float deltaTime = std::clamp(
+            static_cast<float>(
+                frameTime - lastFrameTime
+            ),
+            0.0f,
+            0.1f
+        );
+
+        lastFrameTime = frameTime;
+
         window.pollEvents();
 
         processInput();
-        update();
+        update(deltaTime);
         render();
 
         window.swapBuffers();
@@ -57,14 +77,35 @@ void Application::run()
                 frameCount / elapsed
             );
 
+            const int hours =
+                static_cast<int>(lighting.getHour());
+
+            const int minutes =
+                static_cast<int>(
+                    (lighting.getHour() - hours)
+                    * 60.0f
+                );
+
+            const std::string time =
+                std::string(hours < 10 ? "0" : "")
+                + std::to_string(hours)
+                + ":"
+                + (minutes < 10 ? "0" : "")
+                + std::to_string(minutes);
+
             window.setTitle(
                 "ASCII Engine | FPS: "
                 + std::to_string(fps)
                 + " | Zoom: "
                 + std::to_string(camera.getZoom())
+                + " | Time: "
+                + time
+                + " | Torch: "
+                + (torchEnabled ? "ON" : "OFF")
             );
 
             frameCount = 0;
+
             lastFPSTime = currentTime;
         }
     }
@@ -78,7 +119,53 @@ void Application::processInput()
         return;
     }
 
-    // Mouse wheel zoom
+    // Toggle torch
+
+    const bool lKey =
+        window.isKeyPressed(GLFW_KEY_L);
+
+    if (lKey && !previousLKey)
+    {
+        torchEnabled = !torchEnabled;
+    }
+
+    previousLKey = lKey;
+
+    // Pause or resume day/night cycle
+
+    const bool pKey =
+        window.isKeyPressed(GLFW_KEY_P);
+
+    if (pKey && !previousPKey)
+    {
+        lighting.setCycleEnabled(
+            !lighting.isCycleEnabled()
+        );
+    }
+
+    previousPKey = pKey;
+
+    // Time presets
+
+    if (window.isKeyPressed(GLFW_KEY_1))
+    {
+        lighting.setHour(12.0f);
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_2))
+    {
+        lighting.setHour(18.0f);
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_3))
+    {
+        lighting.setHour(0.0f);
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_4))
+    {
+        lighting.setHour(6.0f);
+    }
 
     const double scroll = window.consumeScroll();
 
@@ -91,14 +178,10 @@ void Application::processInput()
         );
     }
 
-    // Reset zoom
-
     if (window.isKeyPressed(GLFW_KEY_R))
     {
         camera.setZoom(1.0f);
     }
-
-    // Player movement
 
     const double currentTime = glfwGetTime();
 
@@ -130,14 +213,13 @@ void Application::processInput()
     if (dx != 0 || dy != 0)
     {
         player.move(dx, dy, world);
-
         lastMoveTime = currentTime;
     }
 }
 
-void Application::update()
+void Application::update(float deltaTime)
 {
-    // Camera follows the player
+    lighting.update(deltaTime);
 
     camera.setPosition(
         (player.getX() + 0.5f) * CELL_WIDTH,
@@ -158,168 +240,27 @@ void Application::render()
 
     camera.setViewportSize(width, height);
 
+    glyphRenderer.setScreenSize(width, height);
+
+    glyphRenderer.setTime(
+        static_cast<float>(glfwGetTime())
+    );
+
+    // Lighting
+
+    updateLighting();
+
     renderer.clear();
 
-    glyphRenderer.setScreenSize(width, height);
+    // Rendering
 
     glyphRenderer.begin();
 
-    renderWorld();
+    worldRenderer.render(world, camera);
+
     renderPlayer();
 
     glyphRenderer.flush();
-}
-
-void Application::renderWorld()
-{
-    // Calculate visible world boundaries
-
-    const float halfWidth =
-        camera.getVisibleWidth() / 2.0f;
-
-    const float halfHeight =
-        camera.getVisibleHeight() / 2.0f;
-
-    const float left =
-        camera.getX() - halfWidth;
-
-    const float right =
-        camera.getX() + halfWidth;
-
-    const float top =
-        camera.getY() - halfHeight;
-
-    const float bottom =
-        camera.getY() + halfHeight;
-
-    // Convert world coordinates to tile coordinates
-
-    const int startX = std::clamp(
-        static_cast<int>(
-            std::floor(left / CELL_WIDTH)
-        ) - 2,
-        0,
-        world.getWidth()
-    );
-
-    const int endX = std::clamp(
-        static_cast<int>(
-            std::ceil(right / CELL_WIDTH)
-        ) + 2,
-        0,
-        world.getWidth()
-    );
-
-    const int startY = std::clamp(
-        static_cast<int>(
-            std::floor(top / CELL_HEIGHT)
-        ) - 2,
-        0,
-        world.getHeight()
-    );
-
-    const int endY = std::clamp(
-        static_cast<int>(
-            std::ceil(bottom / CELL_HEIGHT)
-        ) + 2,
-        0,
-        world.getHeight()
-    );
-
-    const float scale =
-        GLYPH_SCALE * camera.getZoom();
-
-    // Render only visible tiles
-
-    for (int y = startY; y < endY; ++y)
-    {
-        for (int x = startX; x < endX; ++x)
-        {
-            if (x == player.getX() &&
-                y == player.getY())
-            {
-                continue;
-            }
-
-            const Tile& tile = world.getTile(x, y);
-
-            char32_t symbol = U'.';
-
-            Color color;
-
-            switch (tile.type)
-            {
-                case TileType::DeepWater:
-                    symbol = U'~';
-                    color = {0.12f, 0.25f, 0.65f};
-                    break;
-
-                case TileType::Water:
-                    symbol = U'~';
-                    color = {0.25f, 0.55f, 0.85f};
-                    break;
-
-                case TileType::Sand:
-                    symbol = U':';
-                    color = {0.78f, 0.70f, 0.45f};
-                    break;
-
-                case TileType::Ground:
-                    symbol = U'.';
-                    color = {0.45f, 0.48f, 0.28f};
-                    break;
-
-                case TileType::Grass:
-                    symbol = U',';
-                    color = {0.45f, 0.70f, 0.25f};
-                    break;
-
-                case TileType::Tree:
-                    symbol = U'T';
-                    color = {0.15f, 0.50f, 0.18f};
-                    break;
-
-                case TileType::Rock:
-                    symbol = U'o';
-                    color = {0.55f, 0.55f, 0.55f};
-                    break;
-
-                case TileType::Mountain:
-                    symbol = U'^';
-                    color = {0.75f, 0.75f, 0.75f};
-                    break;
-
-                case TileType::Wall:
-                    symbol = U'#';
-                    color = {0.5f, 0.5f, 0.5f};
-                    break;
-            }
-
-            // Tile coordinates -> World coordinates
-
-            const float worldX =
-                x * CELL_WIDTH + 4.0f;
-
-            const float worldY =
-                (y + 1) * CELL_HEIGHT - 2.0f;
-
-            // World coordinates -> Screen coordinates
-
-            const float screenX =
-                camera.worldToScreenX(worldX);
-
-            const float screenY =
-                camera.worldToScreenY(worldY);
-
-            glyphRenderer.draw(
-                symbol,
-                screenX,
-                screenY,
-                scale,
-                color
-            );
-        }
-    }
 }
 
 void Application::renderPlayer()
@@ -337,4 +278,67 @@ void Application::renderPlayer()
         GLYPH_SCALE * camera.getZoom(),
         {1.0f, 1.0f, 1.0f}
     );
+}
+
+void Application::updateLighting()
+{
+    const Color ambient =
+        lighting.getAmbientColor();
+
+    glyphRenderer.setAmbientLight(ambient);
+
+    // Adjust background brightness
+
+    renderer.setClearColor(
+        0.05f * ambient.r,
+        0.08f * ambient.g,
+        0.06f * ambient.b
+    );
+
+    std::vector<PointLight> lights;
+
+    // Player torch
+
+    if (torchEnabled)
+    {
+        const float worldX =
+            (player.getX() + 0.5f) * CELL_WIDTH;
+
+        const float worldY =
+            (player.getY() + 0.5f) * CELL_HEIGHT;
+
+        PointLight torch;
+
+        torch.x =
+            camera.worldToScreenX(worldX);
+
+        torch.y =
+            camera.worldToScreenY(worldY);
+
+        torch.radius =
+            220.0f * camera.getZoom();
+
+        const float time =
+            static_cast<float>(glfwGetTime());
+
+        // Subtle torch flickering
+
+        const float flicker =
+            1.0f
+            + std::sin(time * 7.0f) * 0.04f
+            + std::sin(time * 13.0f) * 0.025f;
+
+        torch.intensity =
+            1.8f * flicker;
+
+        torch.color = {
+            1.0f,
+            0.72f,
+            0.35f
+        };
+
+        lights.push_back(torch);
+    }
+
+    glyphRenderer.setPointLights(lights);
 }

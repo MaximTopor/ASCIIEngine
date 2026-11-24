@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <vector>
+#include <algorithm>
+#include <string>
 
 namespace
 {
@@ -29,6 +31,10 @@ GlyphRenderer::GlyphRenderer(const FontAtlas& atlas)
     instances.reserve(10000);
 
     shader.setInt("glyphTexture", 0);
+
+    shader.setInt("uLightCount", 0);
+
+    setAmbientLight({1.0f, 1.0f, 1.0f});
 
     initializeInstanceBuffer();
 }
@@ -105,6 +111,21 @@ void GlyphRenderer::initializeInstanceBuffer()
     glEnableVertexAttribArray(5);
     glVertexAttribDivisor(5, 1);
 
+    // Instance animation
+    glVertexAttribPointer(
+        6,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(GlyphInstance),
+        reinterpret_cast<void*>(
+            offsetof(GlyphInstance, animationType)
+        )
+    );
+
+    glEnableVertexAttribArray(6);
+    glVertexAttribDivisor(6, 1);
+
     quad.unbind();
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -137,7 +158,8 @@ void GlyphRenderer::draw(
     float x,
     float y,
     float scale,
-    Color color
+    Color color,
+    GlyphAnimation animation
 )
 {
     const AtlasGlyph& glyph =
@@ -162,7 +184,11 @@ void GlyphRenderer::draw(
 
         color.r,
         color.g,
-        color.b
+        color.b,
+
+        static_cast<float>(animation.type),
+        animation.phase,
+        animation.amplitude
     };
 
     instances.push_back(instance);
@@ -206,4 +232,58 @@ void GlyphRenderer::flush()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     instances.clear();
+}
+
+void GlyphRenderer::setTime(float time)
+{
+    shader.setFloat("uTime", time);
+}
+
+void GlyphRenderer::setAmbientLight(Color color)
+{
+    shader.setVec3(
+        "uAmbientLight",
+        color.r,
+        color.g,
+        color.b
+    );
+}
+
+void GlyphRenderer::setPointLights(
+    const std::vector<PointLight>& lights
+)
+{
+    const int count = static_cast<int>(
+        std::min(
+            lights.size(),
+            static_cast<std::size_t>(MAX_LIGHTS)
+        )
+    );
+
+    shader.setInt("uLightCount", count);
+
+    for (int i = 0; i < count; ++i)
+    {
+        const PointLight& light = lights[i];
+
+        const std::string index =
+            "[" + std::to_string(i) + "]";
+
+        shader.setVec4(
+            "uLightPositionRadius" + index,
+
+            light.x,
+            light.y,
+            light.radius,
+            light.intensity
+        );
+
+        shader.setVec3(
+            "uLightColor" + index,
+
+            light.color.r,
+            light.color.g,
+            light.color.b
+        );
+    }
 }

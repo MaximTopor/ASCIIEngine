@@ -48,4 +48,9 @@ public:
         const std::string& name,
         float x, float y, float z, float w
     ) const;
+
+    void setFloat(
+    const std::string& name,
+    float value
+    ) const;
 };

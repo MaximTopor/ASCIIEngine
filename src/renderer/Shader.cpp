@@ -187,3 +187,17 @@ void Shader::setVec4(
         x, y, z, w
     );
 }
+void Shader::setFloat(
+    const std::string& name,
+    float value
+) const
+{
+    glProgramUniform1f(
+        programID,
+        glGetUniformLocation(
+            programID,
+            name.c_str()
+        ),
+        value
+    );
+}
