@@ -5,6 +5,8 @@
 #include "renderer/Mesh.hpp"
 #include "renderer/Lighting.hpp"
 #include <vector>
+#include "renderer/OcclusionMap.hpp"
+#include "renderer/Camera.hpp"
 
 enum class AnimationType
 {
@@ -94,4 +96,16 @@ public:
     void setPointLights(
         const std::vector<PointLight>& lights
     );
+
+    void setOcclusionMap(
+    const OcclusionMap& map
+);
+
+    void setShadowCamera(
+        const Camera& camera,
+        float cellWidth,
+        float cellHeight
+    );
+
+    void setShadowsEnabled(bool enabled);
 };

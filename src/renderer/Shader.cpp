@@ -1,5 +1,7 @@
 #include "C:\Users\MAX\CLionProjects\ASCIIEngine\include\renderer\Shader.hpp"
 
+#include <iostream>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +18,11 @@ std::string Shader::readFile(
             "Failed to open shader: " + path
         );
     }
+
+    std::cout
+    << "[Shader] Loading: "
+    << std::filesystem::absolute(path)
+    << std::endl;
 
     std::stringstream buffer;
     buffer << file.rdbuf();
@@ -58,6 +65,8 @@ GLuint Shader::compileShader(
 
         throw std::runtime_error(log);
     }
+
+
 
     return shader;
 }
@@ -124,6 +133,8 @@ Shader::Shader(
 
         throw std::runtime_error(log);
     }
+
+
 }
 
 Shader::~Shader()

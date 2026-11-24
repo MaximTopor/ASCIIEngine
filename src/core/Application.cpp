@@ -22,6 +22,7 @@ Application::Application()
           GLYPH_SCALE
       ),
       world(500, 500, 42),
+      occlusionMap(world),
       player(0, 0)
 {
     const auto [spawnX, spawnY] = world.findSpawn();
@@ -250,6 +251,18 @@ void Application::render()
 
     updateLighting();
 
+    // Shadows
+
+    glyphRenderer.setOcclusionMap(occlusionMap);
+
+    glyphRenderer.setShadowCamera(
+        camera,
+        CELL_WIDTH,
+        CELL_HEIGHT
+    );
+
+    glyphRenderer.setShadowsEnabled(true);
+
     renderer.clear();
 
     // Rendering
@@ -317,6 +330,9 @@ void Application::updateLighting()
 
         torch.radius =
             220.0f * camera.getZoom();
+
+        torch.sourceRadius =
+            40.0f * camera.getZoom();
 
         const float time =
             static_cast<float>(glfwGetTime());

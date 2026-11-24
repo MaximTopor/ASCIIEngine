@@ -114,3 +114,6 @@ target_sources(ASCIIEngine PRIVATE
 target_sources(ASCIIEngine PRIVATE
         src/renderer/Lighting.cpp
 )
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/OcclusionMap.cpp
+)

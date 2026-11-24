@@ -31,4 +31,26 @@ struct Tile
                 return false;
         }
     }
+
+    float getLightOpacity() const
+    {
+        switch (type)
+        {
+            case TileType::Tree:
+                return 0.3f;
+
+            case TileType::Rock:
+            case TileType::Mountain:
+            case TileType::Wall:
+                return 1.0f;
+
+            default:
+                return 0.0f;
+        }
+    }
+
+    bool blocksLight() const
+    {
+        return getLightOpacity() >= 1.0f;
+    }
 };

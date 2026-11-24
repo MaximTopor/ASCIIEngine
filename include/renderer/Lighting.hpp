@@ -11,7 +11,7 @@ struct PointLight
 {
     float x = 0.0f;
     float y = 0.0f;
-
+    float sourceRadius = 12.0f;
     float radius = 180.0f;
     float intensity = 1.5f;
 

@@ -9,6 +9,7 @@
 #include "renderer/Camera.hpp"
 #include "renderer/WorldRenderer.hpp"
 #include "renderer/Lighting.hpp"
+#include "renderer/OcclusionMap.hpp"
 #include "world/World.hpp"
 #include "entity/Player.hpp"
 
@@ -39,6 +40,7 @@ private:
     WorldRenderer worldRenderer;
 
     World world;
+    OcclusionMap occlusionMap;
     Player player;
 
     double lastMoveTime = 0.0;
@@ -46,7 +48,6 @@ private:
     void processInput();
     void update(float deltaTime);
     void render();
-
     void renderPlayer();
 
 public:

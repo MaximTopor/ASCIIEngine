@@ -31,7 +31,8 @@ GlyphRenderer::GlyphRenderer(const FontAtlas& atlas)
     instances.reserve(10000);
 
     shader.setInt("glyphTexture", 0);
-
+    shader.setInt("uOcclusionMap", 1);
+    shader.setInt("uShadowsEnabled", 0);
     shader.setInt("uLightCount", 0);
 
     setAmbientLight({1.0f, 1.0f, 1.0f});
@@ -285,5 +286,49 @@ void GlyphRenderer::setPointLights(
             light.color.g,
             light.color.b
         );
+
+        shader.setFloat(
+            "uLightSourceRadius" + index,
+            light.sourceRadius
+        );
     }
+}
+
+void GlyphRenderer::setOcclusionMap(
+    const OcclusionMap& map
+)
+{
+    map.getTexture().bind(1);
+}
+
+void GlyphRenderer::setShadowCamera(
+    const Camera& camera,
+    float cellWidth,
+    float cellHeight
+)
+{
+    shader.setVec2(
+        "uWorldOrigin",
+        camera.screenToWorldX(0.0f),
+        camera.screenToWorldY(0.0f)
+    );
+
+    shader.setVec2(
+        "uCellSize",
+        cellWidth,
+        cellHeight
+    );
+
+    shader.setFloat(
+        "uCameraZoom",
+        camera.getZoom()
+    );
+}
+
+void GlyphRenderer::setShadowsEnabled(bool enabled)
+{
+    shader.setInt(
+        "uShadowsEnabled",
+        enabled ? 1 : 0
+    );
 }
