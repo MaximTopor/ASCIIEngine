@@ -1,5 +1,19 @@
 #pragma once
 
+struct PlanePoint
+{
+    float x;
+    float y;
+};
+
+struct GroundBounds
+{
+    float left;
+    float right;
+    float top;
+    float bottom;
+};
+
 class Camera
 {
 private:
@@ -7,6 +21,12 @@ private:
     float y = 0.0f;
 
     float zoom = 1.0f;
+    float azimuth = 0.26f;
+    float elevation = 0.66f;
+    float c;
+    float s;
+    float rise;
+    float lift;
 
     int viewportWidth = 1280;
     int viewportHeight = 720;
@@ -15,6 +35,7 @@ private:
     static constexpr float MAX_ZOOM = 4.0f;
 
 public:
+    Camera();
     void setPosition(float x, float y);
 
     void move(float dx, float dy);
@@ -24,16 +45,17 @@ public:
 
     void setViewportSize(int width, int height);
 
-    float worldToScreenX(float worldX) const;
-    float worldToScreenY(float worldY) const;
-
-    float screenToWorldX(float screenX) const;
-    float screenToWorldY(float screenY) const;
+    void setAngles(float azimuthRadians, float elevationRadians);
+    void orbit(float azimuthDelta, float elevationDelta);
+    PlanePoint project(float worldX, float worldY, float z = 0.0f) const;
+    bool isVisible(PlanePoint screen, float padding) const;
+    PlanePoint unproject(float screenX, float screenY, float z = 0.0f) const;
+    GroundBounds visibleGround(float maxElevation = 0.0f) const;
+    float depth(float worldX, float worldY, float z = 0.0f) const;
+    float elevationPixels(float z) const { return lift * z * zoom; }
 
     float getX() const;
     float getY() const;
     float getZoom() const;
 
-    float getVisibleWidth() const;
-    float getVisibleHeight() const;
 };

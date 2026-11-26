@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <string>
 
 namespace
@@ -31,11 +32,7 @@ GlyphRenderer::GlyphRenderer(const FontAtlas& atlas)
     instances.reserve(10000);
 
     shader.setInt("glyphTexture", 0);
-    shader.setInt("uOcclusionMap", 1);
-    shader.setInt("uShadowsEnabled", 0);
-    shader.setInt("uLightCount", 0);
-
-    setAmbientLight({1.0f, 1.0f, 1.0f});
+    shader.setInt("uLightmap", 1);
 
     initializeInstanceBuffer();
 }
@@ -127,6 +124,26 @@ void GlyphRenderer::initializeInstanceBuffer()
     glEnableVertexAttribArray(6);
     glVertexAttribDivisor(6, 1);
 
+    // Instance transform
+    glVertexAttribPointer(
+        7,
+        4,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(GlyphInstance),
+        reinterpret_cast<void*>(
+            offsetof(GlyphInstance, rotation)
+        )
+    );
+
+    glEnableVertexAttribArray(7);
+    glVertexAttribDivisor(7, 1);
+
+    glVertexAttribPointer(8, 1, GL_FLOAT, GL_FALSE, sizeof(GlyphInstance),
+                          reinterpret_cast<void*>(offsetof(GlyphInstance, lightOffsetY)));
+    glEnableVertexAttribArray(8);
+    glVertexAttribDivisor(8, 1);
+
     quad.unbind();
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -152,6 +169,24 @@ void GlyphRenderer::setScreenSize(
 void GlyphRenderer::begin()
 {
     instances.clear();
+    orderedInstances.clear();
+    depths.clear();
+}
+
+void GlyphRenderer::drawWorld(const Camera& camera, char32_t character, float x, float y, float z,
+                              float scale, Color color, GlyphAnimation animation,
+                              GlyphTransform transform, GlyphAnchor anchor, bool groundLayer)
+{
+    const auto screen = camera.project(x, y, z);
+    const float screenScale = scale * camera.getZoom();
+    // The atlas uses a 64 px em. Include margin for bearings, rotation and wind.
+    if (!camera.isVisible(screen, 128.0f * screenScale))
+    {
+        return;
+    }
+    const auto depth = groundLayer ? std::nullopt : std::optional{camera.depth(x, y, z)};
+    draw(character, screen.x, screen.y, screenScale, color, animation,
+         transform, anchor, camera.elevationPixels(z), depth);
 }
 
 void GlyphRenderer::draw(
@@ -160,43 +195,123 @@ void GlyphRenderer::draw(
     float y,
     float scale,
     Color color,
-    GlyphAnimation animation
+    GlyphAnimation animation,
+    GlyphTransform transform,
+    GlyphAnchor anchor,
+    float lightOffsetY,
+    std::optional<float> depth
 )
 {
     const AtlasGlyph& glyph =
         atlas.getGlyph(character);
 
-    if (glyph.width == 0 || glyph.height == 0)
+    if (glyph.width == 0 ||
+        glyph.height == 0)
     {
         return;
     }
 
-    GlyphInstance instance{
-        x + glyph.bearingX * scale,
-        y - glyph.bearingY * scale,
+    if (transform.opacity <= 0.0f)
+    {
+        return;
+    }
+
+    GlyphInstance instance
+    {
+        // Position
+
+        x + (anchor == GlyphAnchor::Center ? -0.5f * glyph.width : glyph.bearingX) * scale,
+        y - (anchor == GlyphAnchor::Center ? 0.5f * glyph.height : glyph.bearingY) * scale,
+
+        // Size
 
         glyph.width * scale,
         glyph.height * scale,
+
+        // UV
 
         glyph.u0,
         glyph.v0,
         glyph.u1,
         glyph.v1,
 
+        // Color
+
         color.r,
         color.g,
         color.b,
 
+        // Animation
+
         static_cast<float>(animation.type),
         animation.phase,
-        animation.amplitude
+        animation.amplitude,
+
+        // Transform
+
+        transform.rotation,
+
+        std::clamp(
+            transform.opacity,
+            0.0f,
+            1.0f
+        ),
+
+        transform.pivotX,
+        transform.pivotY,
+        lightOffsetY
     };
 
-    instances.push_back(instance);
+    if (depth)
+    {
+        depths.push_back(*depth);
+        orderedInstances.push_back(instance);
+    }
+    else
+    {
+        instances.push_back(instance);
+    }
+}
+
+void GlyphRenderer::appendDepthSortedInstances()
+{
+    if (depths.empty())
+    {
+        return;
+    }
+    // Stable back-to-front buckets retain submission order within a small depth interval.
+    constexpr std::size_t bucketCount = 4096;
+    std::array<std::size_t, bucketCount> offsets{};
+    const auto [minimum, maximum] = std::minmax_element(depths.begin(), depths.end());
+    const float range = *maximum - *minimum;
+    const float scale = range > 0.0f ? static_cast<float>(bucketCount - 1) / range : 0.0f;
+    const auto bucket = [near = *minimum, scale](float depth)
+    {
+        return std::min(bucketCount - 1, static_cast<std::size_t>((depth - near) * scale));
+    };
+    for (float depth : depths)
+    {
+        ++offsets[bucket(depth)];
+    }
+    std::size_t offset = instances.size();
+    for (auto& count : offsets)
+    {
+        const auto next = offset + count;
+        count = offset;
+        offset = next;
+    }
+    instances.resize(offset);
+    for (std::size_t i = 0; i < depths.size(); ++i)
+    {
+        instances[offsets[bucket(depths[i])]++] = orderedInstances[i];
+    }
+    orderedInstances.clear();
+    depths.clear();
 }
 
 void GlyphRenderer::flush()
 {
+    appendDepthSortedInstances();
     if (instances.empty())
     {
         return;
@@ -204,7 +319,27 @@ void GlyphRenderer::flush()
 
     shader.use();
 
+    // Alpha blending
+
+    glEnable(GL_BLEND);
+
+    glBlendEquation(GL_FUNC_ADD);
+
+    glBlendFunc(
+        GL_SRC_ALPHA,
+        GL_ONE_MINUS_SRC_ALPHA
+    );
+
+    // Font Atlas
+
     atlas.getTexture().bind(0);
+
+    // Shared Light Map
+
+    glBindTextureUnit(
+        1,
+        lightmapTexture
+    );
 
     quad.bind();
 
@@ -232,6 +367,8 @@ void GlyphRenderer::flush()
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+    glDisable(GL_BLEND);
+
     instances.clear();
 }
 
@@ -239,96 +376,11 @@ void GlyphRenderer::setTime(float time)
 {
     shader.setFloat("uTime", time);
 }
-
-void GlyphRenderer::setAmbientLight(Color color)
+void GlyphRenderer::setLightmap(GLuint texture)
 {
-    shader.setVec3(
-        "uAmbientLight",
-        color.r,
-        color.g,
-        color.b
-    );
+    lightmapTexture = texture;
 }
-
-void GlyphRenderer::setPointLights(
-    const std::vector<PointLight>& lights
-)
+std::size_t GlyphRenderer::getInstanceCount() const
 {
-    const int count = static_cast<int>(
-        std::min(
-            lights.size(),
-            static_cast<std::size_t>(MAX_LIGHTS)
-        )
-    );
-
-    shader.setInt("uLightCount", count);
-
-    for (int i = 0; i < count; ++i)
-    {
-        const PointLight& light = lights[i];
-
-        const std::string index =
-            "[" + std::to_string(i) + "]";
-
-        shader.setVec4(
-            "uLightPositionRadius" + index,
-
-            light.x,
-            light.y,
-            light.radius,
-            light.intensity
-        );
-
-        shader.setVec3(
-            "uLightColor" + index,
-
-            light.color.r,
-            light.color.g,
-            light.color.b
-        );
-
-        shader.setFloat(
-            "uLightSourceRadius" + index,
-            light.sourceRadius
-        );
-    }
-}
-
-void GlyphRenderer::setOcclusionMap(
-    const OcclusionMap& map
-)
-{
-    map.getTexture().bind(1);
-}
-
-void GlyphRenderer::setShadowCamera(
-    const Camera& camera,
-    float cellWidth,
-    float cellHeight
-)
-{
-    shader.setVec2(
-        "uWorldOrigin",
-        camera.screenToWorldX(0.0f),
-        camera.screenToWorldY(0.0f)
-    );
-
-    shader.setVec2(
-        "uCellSize",
-        cellWidth,
-        cellHeight
-    );
-
-    shader.setFloat(
-        "uCameraZoom",
-        camera.getZoom()
-    );
-}
-
-void GlyphRenderer::setShadowsEnabled(bool enabled)
-{
-    shader.setInt(
-        "uShadowsEnabled",
-        enabled ? 1 : 0
-    );
+    return instances.size() + orderedInstances.size();
 }

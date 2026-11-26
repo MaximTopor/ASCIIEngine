@@ -22,14 +22,12 @@ void OcclusionMap::rebuild(const World& world)
     {
         for (int x = 0; x < width; ++x)
         {
-            const Tile& tile = world.getTile(x, y);
-
             const std::size_t index =
                 static_cast<std::size_t>(y)
                 * width + x;
 
             pixels[index] = static_cast<unsigned char>(
-                tile.getLightOpacity() * 255.0f + 0.5f
+                world.getLightOpacity(x, y) * 255.0f + 0.5f
             );
         }
     }

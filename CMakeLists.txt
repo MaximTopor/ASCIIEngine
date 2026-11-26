@@ -120,3 +120,13 @@ target_sources(ASCIIEngine PRIVATE
 target_sources(ASCIIEngine PRIVATE
         src/renderer/BackgroundRenderer.cpp
 )
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/RenderStats.cpp
+)
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/RockRenderer.cpp
+)
+target_sources(ASCIIEngine PRIVATE
+        src/renderer/VegetationGenerator.cpp
+        src/renderer/VisualChunkCache.cpp
+)

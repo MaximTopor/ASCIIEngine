@@ -8,6 +8,7 @@
 Application::Application()
     : window(1280, 720, "ASCII Engine"),
       renderer(),
+      renderStats(),
       font(
           "assets/fonts/ttf/JetBrainsMono-Regular.ttf",
           64
@@ -16,25 +17,45 @@ Application::Application()
       glyphRenderer(fontAtlas),
       backgroundRenderer(),
       camera(),
+      world(500, 500, 42),
       worldRenderer(
           glyphRenderer,
-          CELL_WIDTH,
-          CELL_HEIGHT,
+          world,
           GLYPH_SCALE
       ),
-      world(500, 500, 42),
       occlusionMap(world),
-      player(0, 0)
+      player(0.0f, 0.0f)
 {
-    const auto [spawnX, spawnY] = world.findSpawn();
+    const auto [spawnX, spawnY] =
+        world.findSpawn();
 
-    player.setPosition(spawnX, spawnY);
+    const auto& scale =
+        world.getScale();
+
+    // Convert spawn cell coordinates
+    // into continuous world coordinates.
+
+    player.setPosition(
+        (spawnX + 0.5f) * scale.cellWidth,
+        (spawnY + 0.5f) * scale.cellHeight
+    );
+
+    player.setMovementSpeed(
+        scale.playerHeight * 4.0f
+    );
 
     renderer.setClearColor(
-        0.05f, 0.08f, 0.06f
+        0.05f,
+        0.08f,
+        0.06f
     );
 
     camera.setZoom(1.0f);
+
+    camera.setPosition(
+        player.getX(),
+        player.getY()
+    );
 }
 
 void Application::run()
@@ -104,6 +125,15 @@ void Application::run()
                 + time
                 + " | Torch: "
                 + (torchEnabled ? "ON" : "OFF")
+                + renderStats.getTitleSuffix()
+            );
+
+            const double frameTime =
+                elapsed * 1000.0 / frameCount;
+
+            renderStats.print(
+                fps,
+                frameTime
             );
 
             frameCount = 0;
@@ -118,10 +148,11 @@ void Application::processInput()
     if (window.isKeyPressed(GLFW_KEY_ESCAPE))
     {
         window.close();
+
         return;
     }
 
-    // Toggle torch
+    // Toggle torch.
 
     const bool lKey =
         window.isKeyPressed(GLFW_KEY_L);
@@ -133,7 +164,7 @@ void Application::processInput()
 
     previousLKey = lKey;
 
-    // Pause or resume day/night cycle
+    // Pause or resume day/night cycle.
 
     const bool pKey =
         window.isKeyPressed(GLFW_KEY_P);
@@ -147,7 +178,7 @@ void Application::processInput()
 
     previousPKey = pKey;
 
-    // Time presets
+    // Time presets.
 
     if (window.isKeyPressed(GLFW_KEY_1))
     {
@@ -169,7 +200,10 @@ void Application::processInput()
         lighting.setHour(6.0f);
     }
 
-    const double scroll = window.consumeScroll();
+    // Camera zoom.
+
+    const double scroll =
+        window.consumeScroll();
 
     if (scroll != 0.0)
     {
@@ -184,48 +218,102 @@ void Application::processInput()
     {
         camera.setZoom(1.0f);
     }
-
-    const double currentTime = glfwGetTime();
-
-    if (currentTime - lastMoveTime < MOVE_INTERVAL)
-    {
-        return;
-    }
-
-    int dx = 0;
-    int dy = 0;
-
-    if (window.isKeyPressed(GLFW_KEY_W))
-    {
-        dy = -1;
-    }
-    else if (window.isKeyPressed(GLFW_KEY_S))
-    {
-        dy = 1;
-    }
-    else if (window.isKeyPressed(GLFW_KEY_A))
-    {
-        dx = -1;
-    }
-    else if (window.isKeyPressed(GLFW_KEY_D))
-    {
-        dx = 1;
-    }
-
-    if (dx != 0 || dy != 0)
-    {
-        player.move(dx, dy, world);
-        lastMoveTime = currentTime;
-    }
 }
 
 void Application::update(float deltaTime)
 {
     lighting.update(deltaTime);
 
+    // ====================================
+    // Camera rotation
+    // ====================================
+
+    const float orbit =
+        (
+            window.isKeyPressed(GLFW_KEY_RIGHT)
+            - window.isKeyPressed(GLFW_KEY_LEFT)
+        ) * deltaTime;
+
+    const float tilt =
+        (
+            window.isKeyPressed(GLFW_KEY_UP)
+            - window.isKeyPressed(GLFW_KEY_DOWN)
+        ) * deltaTime;
+
+    if (orbit != 0.0f || tilt != 0.0f)
+    {
+        camera.orbit(orbit, tilt);
+    }
+
+    // ====================================
+    // Screen-relative movement input
+    // ====================================
+
+    float inputX = 0.0f;
+    float inputY = 0.0f;
+
+    if (window.isKeyPressed(GLFW_KEY_W))
+    {
+        inputY -= 1.0f;
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_S))
+    {
+        inputY += 1.0f;
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_A))
+    {
+        inputX -= 1.0f;
+    }
+
+    if (window.isKeyPressed(GLFW_KEY_D))
+    {
+        inputX += 1.0f;
+    }
+
+    // ====================================
+    // Convert screen direction into
+    // world-space direction
+    // ====================================
+
+    if (inputX != 0.0f || inputY != 0.0f)
+    {
+        const auto screenPosition =
+            camera.project(
+                player.getX(),
+                player.getY(),
+                0.0f
+            );
+
+        const auto targetPosition =
+            camera.unproject(
+                screenPosition.x + inputX,
+                screenPosition.y + inputY,
+                0.0f
+            );
+
+        const float worldDX =
+            targetPosition.x - player.getX();
+
+        const float worldDY =
+            targetPosition.y - player.getY();
+
+        player.move(
+            worldDX,
+            worldDY,
+            deltaTime,
+            world
+        );
+    }
+
+    // ====================================
+    // Camera follow
+    // ====================================
+
     camera.setPosition(
-        (player.getX() + 0.5f) * CELL_WIDTH,
-        (player.getY() + 0.5f) * CELL_HEIGHT
+        player.getX(),
+        player.getY()
     );
 }
 
@@ -243,10 +331,11 @@ void Application::render()
         return;
     }
 
-    camera.setViewportSize(
-        width,
-        height
-    );
+    // Begin performance measurement
+
+    renderStats.beginFrame();
+
+    camera.setViewportSize(width, height);
 
     glyphRenderer.setScreenSize(
         width,
@@ -257,67 +346,92 @@ void Application::render()
         static_cast<float>(glfwGetTime())
     );
 
-    // Lighting
+    // Update lighting
 
     updateLighting();
 
-    // Shadows
-
-    glyphRenderer.setOcclusionMap(
-        occlusionMap
-    );
-
-    glyphRenderer.setShadowCamera(
-        camera,
-        CELL_WIDTH,
-        CELL_HEIGHT
-    );
-
-    glyphRenderer.setShadowsEnabled(true);
-
-    // Clear screen
+    // Clear framebuffer
 
     renderer.clear();
 
-    // Render illuminated background
+    // Generate Light Map and render background
 
     backgroundRenderer.render(
         camera,
         occlusionMap,
         width,
         height,
-        CELL_WIDTH,
-        CELL_HEIGHT
+        world.getScale().cellWidth,
+        world.getScale().cellHeight
     );
 
-    // Render ASCII glyphs
+    // Light Map fullscreen triangle
+
+    renderStats.recordDrawCall(1);
+
+    // Background fullscreen triangle
+
+    renderStats.recordDrawCall(1);
+
+    // Share Light Map
+
+    glyphRenderer.setLightmap(
+        backgroundRenderer.getLightmapTexture()
+    );
+
+    // Render world
 
     glyphRenderer.begin();
 
-    worldRenderer.render(
-        world,
-        camera
-    );
+    worldRenderer.render(camera);
 
     renderPlayer();
 
+    // Collect rendering statistics
+
+    renderStats.setVisibleTiles(
+        worldRenderer.getVisibleTileCount()
+    );
+
+    renderStats.recordGlyphs(
+        glyphRenderer.getInstanceCount(),
+        sizeof(GlyphInstance)
+    );
+
+    // Submit glyph instances to GPU
+
     glyphRenderer.flush();
+
+    // Finish performance measurement
+
+    renderStats.endFrame();
 }
 
 void Application::renderPlayer()
 {
-    const float worldX =
-        player.getX() * CELL_WIDTH + 4.0f;
+    const auto& scale =
+        world.getScale();
 
-    const float worldY =
-        (player.getY() + 1) * CELL_HEIGHT - 2.0f;
+    const float playerGlyphScale =
+        GLYPH_SCALE
+        * (
+            scale.playerHeight
+            / WorldScale{}.playerHeight
+        );
 
-    glyphRenderer.draw(
+    glyphRenderer.drawWorld(
+        camera,
+
         U'@',
-        camera.worldToScreenX(worldX),
-        camera.worldToScreenY(worldY),
-        GLYPH_SCALE * camera.getZoom(),
-        {1.0f, 1.0f, 1.0f}
+
+        player.getX(),
+        player.getY(),
+
+        scale.playerHeight * 0.5f,
+
+        playerGlyphScale,
+
+        {0.85f, 0.88f, 0.78f}
     );
 }
 
@@ -325,10 +439,6 @@ void Application::updateLighting()
 {
     const Color ambient =
         lighting.getAmbientColor();
-
-    glyphRenderer.setAmbientLight(ambient);
-
-    // Adjust background brightness
 
     renderer.setClearColor(
         0.05f * ambient.r,
@@ -338,23 +448,19 @@ void Application::updateLighting()
 
     std::vector<PointLight> lights;
 
-    // Player torch
-
     if (torchEnabled)
     {
-        const float worldX =
-            (player.getX() + 0.5f) * CELL_WIDTH;
-
-        const float worldY =
-            (player.getY() + 0.5f) * CELL_HEIGHT;
-
         PointLight torch;
 
-        torch.x =
-            camera.worldToScreenX(worldX);
+        const auto ground =
+            camera.project(
+                player.getX(),
+                player.getY(),
+                0.0f
+            );
 
-        torch.y =
-            camera.worldToScreenY(worldY);
+        torch.x = ground.x;
+        torch.y = ground.y;
 
         torch.radius =
             220.0f * camera.getZoom();
@@ -363,9 +469,9 @@ void Application::updateLighting()
             40.0f * camera.getZoom();
 
         const float time =
-            static_cast<float>(glfwGetTime());
-
-        // Subtle torch flickering
+            static_cast<float>(
+                glfwGetTime()
+            );
 
         const float flicker =
             1.0f
@@ -383,8 +489,6 @@ void Application::updateLighting()
 
         lights.push_back(torch);
     }
-
-    glyphRenderer.setPointLights(lights);
 
     backgroundRenderer.setLighting(
         ambient,

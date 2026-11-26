@@ -3,57 +3,33 @@
 #include "renderer/GlyphRenderer.hpp"
 #include "renderer/Camera.hpp"
 #include "world/World.hpp"
+#include <cstddef>
+#include "renderer/RockRenderer.hpp"
+#include "renderer/VisualChunkCache.hpp"
 
 class WorldRenderer
 {
 private:
     GlyphRenderer& glyphRenderer;
+    const World& world;
 
     float cellWidth;
     float cellHeight;
     float glyphScale;
-
-    void drawGlyph(
-        const Camera& camera,
-        char32_t symbol,
-        float worldX,
-        float worldY,
-        float scale,
-        Color color,
-        GlyphAnimation animation = {}
-    );
-
-    void renderGround(
-        const Camera& camera,
-        const Tile& tile,
-        int x,
-        int y
-    );
-
-    void renderVegetation(
-        const Camera& camera,
-        const Tile& tile,
-        int x,
-        int y
-    );
-
-    void renderObjects(
-        const Camera& camera,
-        const Tile& tile,
-        int x,
-        int y
-    );
+    std::size_t visibleTileCount = 0;
+    RockRenderer rockRenderer;
+    VisualChunkCache vegetationCache;
+    std::vector<std::vector<VisualGlyph>> treeGlyphs;
+    void renderGround(const Camera& camera, int x, int y);
 
 public:
     WorldRenderer(
         GlyphRenderer& glyphRenderer,
-        float cellWidth,
-        float cellHeight,
+        const World& world,
         float glyphScale
     );
 
-    void render(
-        const World& world,
-        const Camera& camera
-    );
+    void render(const Camera& camera);
+
+    std::size_t getVisibleTileCount() const;
 };

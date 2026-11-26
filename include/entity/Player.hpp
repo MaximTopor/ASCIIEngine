@@ -5,20 +5,28 @@
 class Player
 {
 private:
-    int x;
-    int y;
+    float x;
+    float y;
+
+    float movementSpeed = 180.0f;
 
 public:
-    Player(int x, int y);
+
+    Player(float x, float y);
 
     bool move(
-        int dx,
-        int dy,
+        float dx,
+        float dy,
+        float deltaTime,
         const World& world
     );
 
-    int getX() const;
-    int getY() const;
+    float getX() const;
+    float getY() const;
 
-    void setPosition(int x, int y);
+    float getMovementSpeed() const;
+
+    void setMovementSpeed(float speed);
+
+    void setPosition(float x, float y);
 };

@@ -220,21 +220,20 @@ void BackgroundRenderer::render(
         static_cast<float>(screenHeight)
     );
 
-    lightmapShader.setVec2(
-        "uWorldOrigin",
-        camera.screenToWorldX(0.0f),
-        camera.screenToWorldY(0.0f)
-    );
+    const auto origin = camera.unproject(0.0f, 0.0f);
+    const auto center = camera.unproject(screenWidth * 0.5f, screenHeight * 0.5f);
+    const auto right = camera.unproject(screenWidth * 1.5f, screenHeight * 0.5f);
+    const auto down = camera.unproject(screenWidth * 0.5f, screenHeight * 1.5f);
+    lightmapShader.setVec2("uWorldOrigin", origin.x, origin.y);
+    lightmapShader.setVec2("uWorldPerScreenX",
+        (right.x - center.x) / screenWidth, (right.y - center.y) / screenWidth);
+    lightmapShader.setVec2("uWorldPerScreenY",
+        (down.x - center.x) / screenHeight, (down.y - center.y) / screenHeight);
 
     lightmapShader.setVec2(
         "uCellSize",
         cellWidth,
         cellHeight
-    );
-
-    lightmapShader.setFloat(
-        "uCameraZoom",
-        camera.getZoom()
     );
 
     // PASS 1: Render lighting into texture
@@ -291,4 +290,8 @@ void BackgroundRenderer::render(
     );
 
     glBindVertexArray(0);
+}
+GLuint BackgroundRenderer::getLightmapTexture() const
+{
+    return lightmapTexture;
 }

@@ -1,6 +1,14 @@
 #include "renderer/Camera.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <initializer_list>
+#include <numbers>
+
+Camera::Camera()
+{
+    setAngles(azimuth, elevation);
+}
 
 void Camera::setPosition(float x, float y)
 {
@@ -37,28 +45,65 @@ void Camera::setViewportSize(int width, int height)
     }
 }
 
-float Camera::worldToScreenX(float worldX) const
+void Camera::setAngles(float azimuthRadians, float elevationRadians)
 {
-    return (worldX - x) * zoom
-        + viewportWidth / 2.0f;
+    azimuth = std::remainder(azimuthRadians, 2.0f * std::numbers::pi_v<float>);
+    elevation = std::clamp(elevationRadians, 0.32f, std::numbers::pi_v<float> * 0.5f);
+    c = std::cos(azimuth);
+    s = std::sin(azimuth);
+    rise = std::sin(elevation);
+    lift = std::cos(elevation);
 }
 
-float Camera::worldToScreenY(float worldY) const
+void Camera::orbit(float azimuthDelta, float elevationDelta)
 {
-    return (worldY - y) * zoom
-        + viewportHeight / 2.0f;
+    setAngles(azimuth + azimuthDelta, elevation + elevationDelta);
 }
 
-float Camera::screenToWorldX(float screenX) const
+PlanePoint Camera::project(float worldX, float worldY, float z) const
 {
-    return (screenX - viewportWidth / 2.0f)
-        / zoom + x;
+    const float dx = worldX - x;
+    const float dy = worldY - y;
+    return {viewportWidth * 0.5f + zoom * (c * dx - s * dy),
+            viewportHeight * 0.5f + zoom * (rise * (s * dx + c * dy) - lift * z)};
 }
 
-float Camera::screenToWorldY(float screenY) const
+PlanePoint Camera::unproject(float screenX, float screenY, float z) const
 {
-    return (screenY - viewportHeight / 2.0f)
-        / zoom + y;
+    const float u = (screenX - viewportWidth * 0.5f) / zoom;
+    const float v = ((screenY - viewportHeight * 0.5f) / zoom + lift * z) / rise;
+    return {x + c * u + s * v, y - s * u + c * v};
+}
+
+bool Camera::isVisible(PlanePoint screen, float padding) const
+{
+    return screen.x >= -padding && screen.x <= viewportWidth + padding
+        && screen.y >= -padding && screen.y <= viewportHeight + padding;
+}
+
+GroundBounds Camera::visibleGround(float maxElevation) const
+{
+    GroundBounds bounds{x, x, y, y};
+    for (float z : {0.0f, maxElevation})
+    {
+        for (float sx : {0.0f, static_cast<float>(viewportWidth)})
+        {
+            for (float sy : {0.0f, static_cast<float>(viewportHeight)})
+            {
+                const auto point = unproject(sx, sy, z);
+                bounds.left = std::min(bounds.left, point.x);
+                bounds.right = std::max(bounds.right, point.x);
+                bounds.top = std::min(bounds.top, point.y);
+                bounds.bottom = std::max(bounds.bottom, point.y);
+            }
+        }
+    }
+    return bounds;
+}
+
+float Camera::depth(float worldX, float worldY, float z) const
+{
+    return lift * (s * (worldX - x) + c * (worldY - y)) + rise * z;
 }
 
 float Camera::getX() const
@@ -74,14 +119,4 @@ float Camera::getY() const
 float Camera::getZoom() const
 {
     return zoom;
-}
-
-float Camera::getVisibleWidth() const
-{
-    return viewportWidth / zoom;
-}
-
-float Camera::getVisibleHeight() const
-{
-    return viewportHeight / zoom;
 }

@@ -29,7 +29,7 @@ private:
 public:
     BackgroundRenderer();
     ~BackgroundRenderer();
-
+    GLuint getLightmapTexture() const;
     BackgroundRenderer(
         const BackgroundRenderer&
     ) = delete;

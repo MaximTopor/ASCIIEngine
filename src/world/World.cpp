@@ -3,16 +3,34 @@
 
 #include <stdexcept>
 #include <cstddef>
-#include <cstdlib>
+#include <algorithm>
+#include <cmath>
+
+namespace
+{
+    std::uint32_t hash(std::uint32_t value)
+    {
+        value = (value ^ (value >> 16)) * 0x7feb352du;
+        value = (value ^ (value >> 15)) * 0x846ca68bu;
+        return value ^ (value >> 16);
+    }
+
+    float fraction(std::uint32_t value)
+    {
+        return static_cast<float>(value >> 8) / 16777216.0f;
+    }
+}
 
 World::World(
     int width,
     int height,
-    int seed
+    int seed,
+    WorldScale scale
 )
     : width(width),
       height(height),
-      seed(seed)
+      seed(seed),
+      scale(scale)
 {
     if (width < 3 || height < 3)
     {
@@ -21,11 +39,169 @@ World::World(
         );
     }
 
+    const float maxDiameter = scale.maximumRockDiameter * scale.playerHeight;
+    const auto positive = [](float value) { return std::isfinite(value) && value > 0; };
+    if (!positive(scale.cellWidth) || !positive(scale.cellHeight)
+        || !positive(scale.playerHeight) || !positive(scale.minimumRockDiameter)
+        || !positive(maxDiameter) || scale.maximumRockDiameter < scale.minimumRockDiameter
+        || !positive(width * scale.cellWidth) || !positive(height * scale.cellHeight)
+        || !positive(3.3f * maxDiameter))
+    {
+        throw std::invalid_argument("Invalid world scale");
+    }
+
     tiles.resize(
         static_cast<std::size_t>(width) * height
     );
 
     generate();
+    rockFootprint.resize(tiles.size());
+    treeTrunks.resize(tiles.size());
+    generateRocks();
+    generateTrees();
+}
+
+void World::generateTrees()
+{
+    const double spacing = std::max(5.4 * scale.playerHeight,
+        2.0 * std::max(scale.cellWidth, scale.cellHeight));
+    const auto [spawnX, spawnY] = findSpawnCell();
+    for (int row = 0; row * spacing < height * scale.cellHeight; ++row)
+    {
+        for (int col = 0; col * spacing < width * scale.cellWidth; ++col)
+        {
+            const auto treeSeed = hash(static_cast<std::uint32_t>(seed) ^ 0x1b873593u
+                ^ (static_cast<std::uint32_t>(col) * 1597334677u)
+                ^ (static_cast<std::uint32_t>(row) * 3812015801u));
+            const float x = static_cast<float>((col + 0.22 + 0.56 * fraction(hash(treeSeed + 1u))) * spacing);
+            const float y = static_cast<float>((row + 0.22 + 0.56 * fraction(hash(treeSeed + 2u))) * spacing);
+            if (x >= width * scale.cellWidth || y >= height * scale.cellHeight)
+            {
+                continue;
+            }
+            const int cx = std::min(width - 1, static_cast<int>(x / scale.cellWidth));
+            const int cy = std::min(height - 1, static_cast<int>(y / scale.cellHeight));
+            const bool nearSpawn = spawnX >= 0 && std::abs(cx - spawnX) <= 1 && std::abs(cy - spawnY) <= 1;
+            if (nearSpawn || getTile(cx, cy).type != TileType::Tree || !isWalkable(cx, cy))
+            {
+                continue;
+            }
+            trees.push_back({x, y, scale.playerHeight * (3.5f + 2.7f * fraction(treeSeed)), treeSeed});
+            treeTrunks[static_cast<std::size_t>(cy) * width + cx] = true;
+        }
+    }
+}
+
+bool World::placeRock(float x, float y, std::uint32_t objectSeed, float size)
+{
+    const float diameter = scale.playerHeight * std::lerp(
+        scale.minimumRockDiameter, scale.maximumRockDiameter, size);
+    const Rock rock{
+        rocks.size(), x, y, diameter * 0.5f,
+        diameter * (0.30f + 0.12f * fraction(hash(objectSeed))),
+        diameter * (0.33f + 0.14f * fraction(hash(objectSeed + 1u))),
+        fraction(hash(objectSeed + 2u)) * 6.2831853f, objectSeed
+    };
+    const float c = std::cos(rock.angle);
+    const float s = std::sin(rock.angle);
+    const float extentX = std::hypot(c * rock.radiusX, s * rock.radiusY);
+    const float extentY = std::hypot(s * rock.radiusX, c * rock.radiusY);
+    if (x - extentX < 0 || y - extentY < 0
+        || x + extentX >= width * scale.cellWidth
+        || y + extentY >= height * scale.cellHeight)
+    {
+        return false;
+    }
+
+    std::vector<std::size_t> cells;
+    const int firstX = static_cast<int>((x - extentX) / scale.cellWidth);
+    const int lastX = std::min(width - 1, static_cast<int>((x + extentX) / scale.cellWidth));
+    const int firstY = static_cast<int>((y - extentY) / scale.cellHeight);
+    const int lastY = std::min(height - 1, static_cast<int>((y + extentY) / scale.cellHeight));
+    for (int cy = firstY; cy <= lastY; ++cy)
+    {
+        for (int cx = firstX; cx <= lastX; ++cx)
+        {
+            const float dx = (cx + 0.5f) * scale.cellWidth - x;
+            const float dy = (cy + 0.5f) * scale.cellHeight - y;
+            if (rock.surface((dx * c + dy * s) / rock.radiusX,
+                             (-dx * s + dy * c) / rock.radiusY) <= 0)
+            {
+                continue;
+            }
+            if (!isWalkable(cx, cy))
+            {
+                return false;
+            }
+            cells.push_back(static_cast<std::size_t>(cy) * width + cx);
+        }
+    }
+    if (cells.empty())
+    {
+        return false;
+    }
+    rocks.push_back(rock);
+    for (const auto index : cells)
+    {
+        rockFootprint[index] = true;
+    }
+    return true;
+}
+
+void World::generateRocks()
+{
+    const float maxDiameter = scale.maximumRockDiameter * scale.playerHeight;
+    const float worldWidth = width * scale.cellWidth;
+    const float worldHeight = height * scale.cellHeight;
+    const auto worldSeed = static_cast<std::uint32_t>(seed);
+
+    // Place a large example near the opening view wherever the terrain permits.
+    const auto [spawnX, spawnY] = findSpawnCell();
+    if (spawnX >= 0)
+    {
+        const float distance = std::max(maxDiameter * 1.15f,
+            3.0f * std::max(scale.cellWidth, scale.cellHeight));
+        for (int i = 0; i < 12; ++i)
+        {
+            const float angle = i * 0.5235988f;
+            if (placeRock((spawnX + 0.5f) * scale.cellWidth + distance * std::cos(angle),
+                          (spawnY + 0.5f) * scale.cellHeight + distance * std::sin(angle),
+                          hash(worldSeed), 1.0f))
+            {
+                break;
+            }
+        }
+    }
+
+    // A jittered coarse placement lattice sized in physical world units.
+    const double spacing = std::max(3.3 * maxDiameter,
+        2.0 * std::max(scale.cellWidth, scale.cellHeight));
+    for (int row = 0; row * spacing < worldHeight; ++row)
+    {
+        for (int col = 0; col * spacing < worldWidth; ++col)
+        {
+            const auto objectSeed = hash(worldSeed ^ (static_cast<std::uint32_t>(col) * 374761393u)
+                ^ (static_cast<std::uint32_t>(row) * 668265263u));
+            const float x = static_cast<float>((col + 0.25 + 0.5 * fraction(hash(objectSeed + 3u))) * spacing);
+            const float y = static_cast<float>((row + 0.25 + 0.5 * fraction(hash(objectSeed + 4u))) * spacing);
+            if (x >= worldWidth || y >= worldHeight)
+            {
+                continue;
+            }
+            const int cx = std::min(width - 1, static_cast<int>(x / scale.cellWidth));
+            const int cy = std::min(height - 1, static_cast<int>(y / scale.cellHeight));
+            if (spawnX >= 0
+                && std::abs(cx - static_cast<double>(spawnX)) * scale.cellWidth < maxDiameter + 2.0 * scale.cellWidth
+                && std::abs(cy - static_cast<double>(spawnY)) * scale.cellHeight < maxDiameter + 2.0 * scale.cellHeight)
+            {
+                continue;
+            }
+            if (getTile(cx, cy).type == TileType::Rock || fraction(objectSeed) < 0.45f)
+            {
+                placeRock(x, y, objectSeed, fraction(hash(objectSeed + 5u)));
+            }
+        }
+    }
 }
 
 void World::generate()
@@ -59,7 +235,25 @@ bool World::isWalkable(int x, int y) const
         return false;
     }
 
-    return getTile(x, y).isWalkable();
+    return getTile(x, y).isWalkable()
+        && !hasRock(x, y)
+        && !treeTrunks[static_cast<std::size_t>(y) * width + x];
+}
+
+bool World::hasRock(int x, int y) const
+{
+    return isInside(x, y)
+        && rockFootprint[static_cast<std::size_t>(y) * width + x];
+}
+
+float World::getLightOpacity(int x, int y) const
+{
+    const auto& tile = getTile(x, y);
+    if (hasRock(x, y))
+    {
+        return 1.0f;
+    }
+    return treeTrunks[static_cast<std::size_t>(y) * width + x] ? 0.3f : tile.getLightOpacity();
 }
 
 const Tile& World::getTile(int x, int y) const
@@ -77,6 +271,16 @@ const Tile& World::getTile(int x, int y) const
 }
 
 std::pair<int, int> World::findSpawn() const
+{
+    const auto spawn = findSpawnCell();
+    if (spawn.first < 0)
+    {
+        throw std::runtime_error("No suitable spawn position found");
+    }
+    return spawn;
+}
+
+std::pair<int, int> World::findSpawnCell() const
 {
     const int centerX = width / 2;
     const int centerY = height / 2;
@@ -120,13 +324,6 @@ std::pair<int, int> World::findSpawn() const
         }
     }
 
-    if (bestX == -1)
-    {
-        throw std::runtime_error(
-            "No suitable spawn position found"
-        );
-    }
-
     return {bestX, bestY};
 }
 
@@ -138,4 +335,131 @@ int World::getWidth() const
 int World::getHeight() const
 {
     return height;
+}
+bool World::isWalkableAt(
+    float worldX,
+    float worldY,
+    float radius
+) const
+{
+    // Validate coordinates.
+
+    if (!std::isfinite(worldX) ||
+        !std::isfinite(worldY) ||
+        !std::isfinite(radius) ||
+        radius < 0.0f)
+    {
+        return false;
+    }
+
+    // World dimensions.
+
+    const float worldWidth =
+        width * scale.cellWidth;
+
+    const float worldHeight =
+        height * scale.cellHeight;
+
+    // World boundaries.
+
+    if (worldX - radius < 0.0f ||
+        worldY - radius < 0.0f ||
+        worldX + radius >= worldWidth ||
+        worldY + radius >= worldHeight)
+    {
+        return false;
+    }
+
+    // Find all potentially intersecting cells.
+
+    const int startX =
+        static_cast<int>(
+            std::floor(
+                (worldX - radius)
+                / scale.cellWidth
+            )
+        );
+
+    const int endX =
+        static_cast<int>(
+            std::floor(
+                (worldX + radius)
+                / scale.cellWidth
+            )
+        );
+
+    const int startY =
+        static_cast<int>(
+            std::floor(
+                (worldY - radius)
+                / scale.cellHeight
+            )
+        );
+
+    const int endY =
+        static_cast<int>(
+            std::floor(
+                (worldY + radius)
+                / scale.cellHeight
+            )
+        );
+
+    const float radiusSquared =
+        radius * radius;
+
+    for (int cy = startY; cy <= endY; ++cy)
+    {
+        for (int cx = startX; cx <= endX; ++cx)
+        {
+            if (isWalkable(cx, cy))
+            {
+                continue;
+            }
+
+            const float left =
+                cx * scale.cellWidth;
+
+            const float right =
+                left + scale.cellWidth;
+
+            const float top =
+                cy * scale.cellHeight;
+
+            const float bottom =
+                top + scale.cellHeight;
+
+            // Find the closest point
+            // on the blocked cell.
+
+            const float closestX =
+                std::clamp(
+                    worldX,
+                    left,
+                    right
+                );
+
+            const float closestY =
+                std::clamp(
+                    worldY,
+                    top,
+                    bottom
+                );
+
+            const float dx =
+                worldX - closestX;
+
+            const float dy =
+                worldY - closestY;
+
+            // Circle versus rectangle collision.
+
+            if (dx * dx + dy * dy
+                <= radiusSquared)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }

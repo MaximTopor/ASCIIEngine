@@ -31,7 +31,8 @@ uniform int uShadowsEnabled;
 
 uniform vec2 uWorldOrigin;
 uniform vec2 uCellSize;
-uniform float uCameraZoom;
+uniform vec2 uWorldPerScreenX;
+uniform vec2 uWorldPerScreenY;
 
 
 // Screen -> Tile coordinates
@@ -40,7 +41,8 @@ vec2 screenToTile(vec2 screenPosition)
 {
     vec2 worldPosition =
     uWorldOrigin
-    + screenPosition / uCameraZoom;
+    + screenPosition.x * uWorldPerScreenX
+    + screenPosition.y * uWorldPerScreenY;
 
     return worldPosition / uCellSize;
 }

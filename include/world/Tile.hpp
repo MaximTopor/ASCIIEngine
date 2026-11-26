@@ -25,6 +25,8 @@ struct Tile
             case TileType::Ground:
             case TileType::Grass:
             case TileType::Sand:
+            case TileType::Rock:
+            case TileType::Tree:
                 return true;
 
             default:
@@ -36,10 +38,6 @@ struct Tile
     {
         switch (type)
         {
-            case TileType::Tree:
-                return 0.3f;
-
-            case TileType::Rock:
             case TileType::Mountain:
             case TileType::Wall:
                 return 1.0f;
