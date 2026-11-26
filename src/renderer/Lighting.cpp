@@ -24,6 +24,36 @@ namespace
     }
 }
 
+SurfaceLighting Lighting::getSurfaceLighting() const
+{
+    constexpr float orbitAzimuth = -0.65f;
+    constexpr float solarPeak = 0.94f;
+    constexpr float lunarPeak = 0.73f;
+    const float phase = (hour - 6.0f) * PI / 12.0f;
+    const float solarHeight = std::sin(phase);
+    const float sunStrength = smoothstep(-0.035f,0.42f,solarHeight) * 0.91f;
+    const float moonStrength = smoothstep(0.03f,0.65f,-solarHeight) * 0.27f;
+    const float warmth = smoothstep(0.04f,0.70f,solarHeight);
+    const auto direction = [=](float angle, float peak, float azimuth, Color radiance)
+    {
+        const float x = -std::cos(angle);
+        const float y = 0.34f * std::sin(angle);
+        const float z = peak * std::sin(angle);
+        const float inv = 1.0f / std::sqrt(x*x+y*y+z*z);
+        const float c = std::cos(azimuth), s = std::sin(azimuth);
+        return DirectionalLight{(c*x-s*y)*inv, (s*x+c*y)*inv, z*inv, radiance};
+    };
+    const float day = smoothstep(-0.17f,0.38f,solarHeight);
+    return {
+        {lerp(0.105f,0.64f,day),lerp(0.14f,0.66f,day),lerp(0.22f,0.65f,day)},
+        {lerp(0.065f,0.38f,day),lerp(0.075f,0.35f,day),lerp(0.105f,0.31f,day)},
+        direction(phase,solarPeak,orbitAzimuth,
+                  {sunStrength,sunStrength*lerp(0.58f,0.94f,warmth),sunStrength*lerp(0.34f,0.83f,warmth)}),
+        direction(phase+PI,lunarPeak,orbitAzimuth+1.22f,
+                  {moonStrength*0.54f,moonStrength*0.68f,moonStrength})
+    };
+}
+
 void Lighting::update(float deltaTime)
 {
     if (!cycleEnabled)

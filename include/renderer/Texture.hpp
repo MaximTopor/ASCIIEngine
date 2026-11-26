@@ -14,7 +14,8 @@ public:
     Texture(
         int width,
         int height,
-        const unsigned char* pixels
+        const unsigned char* pixels,
+        int mipLevels = 0
     );
 
     ~Texture();

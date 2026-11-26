@@ -81,7 +81,7 @@ void BackgroundRenderer::resizeLightmap(
     glTextureStorage2D(
         lightmapTexture,
         1,
-        GL_RGB16F,
+        GL_RGBA16F,
         lightmapWidth,
         lightmapHeight
     );
@@ -141,7 +141,8 @@ void BackgroundRenderer::resizeLightmap(
 
 void BackgroundRenderer::setLighting(
     Color ambient,
-    const std::vector<PointLight>& lights
+    std::span<const PointLight> lights,
+    const Camera& camera
 )
 {
     lightmapShader.setVec3(
@@ -166,15 +167,16 @@ void BackgroundRenderer::setLighting(
     for (int i = 0; i < count; ++i)
     {
         const PointLight& light = lights[i];
+        const auto screen = camera.project(light.x,light.y);
 
         const std::string index =
             "[" + std::to_string(i) + "]";
 
         lightmapShader.setVec4(
             "uLightPositionRadius" + index,
-            light.x,
-            light.y,
-            light.radius,
+            screen.x,
+            screen.y,
+            light.radius * camera.getZoom(),
             light.intensity
         );
 
@@ -187,7 +189,7 @@ void BackgroundRenderer::setLighting(
 
         lightmapShader.setFloat(
             "uLightSourceRadius" + index,
-            light.sourceRadius
+            light.sourceRadius * camera.getZoom()
         );
     }
 }

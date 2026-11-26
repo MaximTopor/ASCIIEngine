@@ -7,12 +7,26 @@
 #include <vector>
 #include <utility>
 
+enum class TreeSpecies { Oak, Birch, Pine };
+
+constexpr float treeBaseRadiusRatio(TreeSpecies species)
+{
+    switch (species)
+    {
+        case TreeSpecies::Oak: return 0.056f;
+        case TreeSpecies::Birch: return 0.024f;
+        case TreeSpecies::Pine: return 0.033f;
+    }
+    return 0.056f;
+}
+
 struct Tree
 {
     float x;
     float y;
     float height;
     std::uint32_t seed;
+    TreeSpecies species = TreeSpecies::Oak;
 };
 
 class World
@@ -32,7 +46,9 @@ private:
     void generate();
     void generateRocks();
     void generateTrees();
-    bool placeRock(float x, float y, std::uint32_t objectSeed, float size);
+    void generateBenchmark();
+    void placeTree(float x, float y, float treeHeight, std::uint32_t treeSeed, TreeSpecies species);
+    bool placeRock(float x, float y, std::uint32_t objectSeed, float diameter, bool solid = true);
     std::pair<int, int> findSpawnCell() const;
 
 public:
@@ -40,7 +56,8 @@ public:
         int width,
         int height,
         int seed = 42,
-        WorldScale scale = {}
+        WorldScale scale = {},
+        bool benchmark = false
     );
 
     bool isInside(int x, int y) const;

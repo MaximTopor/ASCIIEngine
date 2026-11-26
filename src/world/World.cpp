@@ -25,7 +25,8 @@ World::World(
     int width,
     int height,
     int seed,
-    WorldScale scale
+    WorldScale scale,
+    bool benchmark
 )
     : width(width),
       height(height),
@@ -54,11 +55,86 @@ World::World(
         static_cast<std::size_t>(width) * height
     );
 
-    generate();
     rockFootprint.resize(tiles.size());
     treeTrunks.resize(tiles.size());
-    generateRocks();
-    generateTrees();
+    if (benchmark)
+    {
+        generateBenchmark();
+    }
+    else
+    {
+        generate();
+        generateRocks();
+        generateTrees();
+    }
+}
+
+void World::generateBenchmark()
+{
+    const float centerX = (width / 2 + 0.5f) * scale.cellWidth;
+    const float centerY = (height / 2 + 0.5f) * scale.cellHeight;
+    const auto seedValue = static_cast<std::uint32_t>(seed);
+    FastNoiseLite detail(seed);
+    detail.SetFrequency(0.021f);
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const float px = (x + 0.5f) * scale.cellWidth - centerX;
+            const float py = (y + 0.5f) * scale.cellHeight - centerY;
+            const float stream = std::abs(px - 225.0f - 34.0f * std::sin(py * 0.011f));
+            const float path = std::abs(py - 35.0f * std::sin(px * 0.009f));
+            const float grain = detail.GetNoise(px, py);
+            TileType type = TileType::Grass;
+            if (stream < 11.0f) type = TileType::DeepWater;
+            else if (stream < 26.0f) type = TileType::Water;
+            else if (stream < 37.0f + grain * 5.0f) type = TileType::Sand;
+            else if (path < 25.0f + grain * 8.0f || grain < -0.60f) type = TileType::Ground;
+            tiles[static_cast<std::size_t>(y) * width + x] = Tile{type};
+        }
+    }
+    placeTree(centerX - 175.0f, centerY + 238.0f, 720.0f, hash(seedValue + 1u), TreeSpecies::Oak);
+    placeTree(centerX + 108.0f, centerY - 113.0f, 330.0f, hash(seedValue + 2u), TreeSpecies::Oak);
+    placeTree(centerX - 218.0f, centerY - 183.0f, 440.0f, hash(seedValue + 3u), TreeSpecies::Pine);
+    placeTree(centerX + 335.0f, centerY + 96.0f, 380.0f, hash(seedValue + 4u), TreeSpecies::Birch);
+    placeTree(centerX + 124.0f, centerY + 196.0f, 245.0f, hash(seedValue + 5u), TreeSpecies::Birch);
+    placeRock(centerX - 58.0f, centerY - 87.0f, hash(seedValue + 6u), 63.0f);
+    placeRock(centerX + 62.0f, centerY + 52.0f, hash(seedValue + 7u), 23.0f);
+    for (std::uint32_t i = 0; i < 150; ++i)
+    {
+        const auto stone = hash(seedValue + 100u + i);
+        const float x = (fraction(stone) - 0.5f) * 800.0f;
+        const float y = (fraction(hash(stone + 1u)) - 0.5f) * 640.0f;
+        placeRock(centerX + x, centerY + y, stone, 3.0f + 7.0f * fraction(hash(stone + 2u)), false);
+    }
+    placeRock(centerX - 14.0f, centerY + 14.0f, hash(seedValue + 250u), 8.0f, false);
+    placeRock(centerX + 19.0f, centerY + 23.0f, hash(seedValue + 251u), 5.0f, false);
+}
+
+void World::placeTree(float x, float y, float treeHeight, std::uint32_t treeSeed, TreeSpecies species)
+{
+    const int cx = static_cast<int>(x / scale.cellWidth);
+    const int cy = static_cast<int>(y / scale.cellHeight);
+    if (!isWalkable(cx, cy))
+    {
+        return;
+    }
+    trees.push_back({x, y, treeHeight, treeSeed, species});
+    const float radius = treeHeight * treeBaseRadiusRatio(species);
+    for (int row = std::max(0, static_cast<int>((y - radius) / scale.cellHeight));
+         row <= std::min(height - 1, static_cast<int>((y + radius) / scale.cellHeight)); ++row)
+    {
+        for (int col = std::max(0, static_cast<int>((x - radius) / scale.cellWidth));
+             col <= std::min(width - 1, static_cast<int>((x + radius) / scale.cellWidth)); ++col)
+        {
+            const float dx = (col + 0.5f) * scale.cellWidth - x;
+            const float dy = (row + 0.5f) * scale.cellHeight - y;
+            if ((cx == col && cy == row) || dx * dx + dy * dy <= radius * radius)
+            {
+                treeTrunks[static_cast<std::size_t>(row) * width + col] = true;
+            }
+        }
+    }
 }
 
 void World::generateTrees()
@@ -86,16 +162,15 @@ void World::generateTrees()
             {
                 continue;
             }
-            trees.push_back({x, y, scale.playerHeight * (3.5f + 2.7f * fraction(treeSeed)), treeSeed});
-            treeTrunks[static_cast<std::size_t>(cy) * width + cx] = true;
+            const auto kind = treeSeed % 10u;
+            const auto species = kind < 5 ? TreeSpecies::Oak : (kind < 8 ? TreeSpecies::Birch : TreeSpecies::Pine);
+            placeTree(x, y, scale.playerHeight * (3.5f + 2.7f * fraction(treeSeed)), treeSeed, species);
         }
     }
 }
 
-bool World::placeRock(float x, float y, std::uint32_t objectSeed, float size)
+bool World::placeRock(float x, float y, std::uint32_t objectSeed, float diameter, bool solid)
 {
-    const float diameter = scale.playerHeight * std::lerp(
-        scale.minimumRockDiameter, scale.maximumRockDiameter, size);
     const Rock rock{
         rocks.size(), x, y, diameter * 0.5f,
         diameter * (0.30f + 0.12f * fraction(hash(objectSeed))),
@@ -111,6 +186,15 @@ bool World::placeRock(float x, float y, std::uint32_t objectSeed, float size)
         || y + extentY >= height * scale.cellHeight)
     {
         return false;
+    }
+    if (!solid)
+    {
+        if (!isWalkable(static_cast<int>(x / scale.cellWidth), static_cast<int>(y / scale.cellHeight)))
+        {
+            return false;
+        }
+        rocks.push_back(rock);
+        return true;
     }
 
     std::vector<std::size_t> cells;
@@ -166,7 +250,7 @@ void World::generateRocks()
             const float angle = i * 0.5235988f;
             if (placeRock((spawnX + 0.5f) * scale.cellWidth + distance * std::cos(angle),
                           (spawnY + 0.5f) * scale.cellHeight + distance * std::sin(angle),
-                          hash(worldSeed), 1.0f))
+                          hash(worldSeed), maxDiameter))
             {
                 break;
             }
@@ -198,7 +282,23 @@ void World::generateRocks()
             }
             if (getTile(cx, cy).type == TileType::Rock || fraction(objectSeed) < 0.45f)
             {
-                placeRock(x, y, objectSeed, fraction(hash(objectSeed + 5u)));
+                const float diameter = scale.playerHeight * std::lerp(
+                    scale.minimumRockDiameter, scale.maximumRockDiameter, fraction(hash(objectSeed + 5u)));
+                placeRock(x, y, objectSeed, diameter);
+            }
+        }
+    }
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const auto stone = hash(worldSeed ^ (static_cast<std::uint32_t>(x) * 1376312589u)
+                ^ (static_cast<std::uint32_t>(y) * 120196573u));
+            if (stone % 103u == 0u)
+            {
+                placeRock((x + 0.25f + 0.5f * fraction(hash(stone + 1u))) * scale.cellWidth,
+                          (y + 0.25f + 0.5f * fraction(hash(stone + 2u))) * scale.cellHeight,
+                          stone, 3.0f + 7.0f * fraction(hash(stone + 3u)), false);
             }
         }
     }

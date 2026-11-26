@@ -92,6 +92,7 @@ add_custom_command(
 
 target_sources(ASCIIEngine PRIVATE
         src/renderer/GlyphRenderer.cpp
+        src/renderer/KnightRenderer.cpp
 )
 
 target_sources(ASCIIEngine PRIVATE
@@ -110,6 +111,9 @@ target_sources(ASCIIEngine PRIVATE
 )
 target_sources(ASCIIEngine PRIVATE
         src/renderer/WorldRenderer.cpp
+        src/renderer/TreeRenderer.cpp
+        src/renderer/SurfaceSampler.cpp
+        src/renderer/SurfaceMaterial.cpp
 )
 target_sources(ASCIIEngine PRIVATE
         src/renderer/Lighting.cpp
@@ -130,3 +134,20 @@ target_sources(ASCIIEngine PRIVATE
         src/renderer/VegetationGenerator.cpp
         src/renderer/VisualChunkCache.cpp
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(SurfaceSamplerTest tests/SurfaceSamplerTest.cpp src/renderer/SurfaceSampler.cpp)
+    target_include_directories(SurfaceSamplerTest PRIVATE include)
+    add_test(NAME SurfaceSampler COMMAND SurfaceSamplerTest)
+    add_executable(LightingTest tests/LightingTest.cpp src/renderer/Lighting.cpp)
+    target_include_directories(LightingTest PRIVATE include)
+    add_test(NAME Lighting COMMAND LightingTest)
+    add_executable(GlyphLightingGpuTest tests/GlyphLightingGpuTest.cpp src/renderer/Shader.cpp)
+    target_include_directories(GlyphLightingGpuTest PRIVATE include)
+    target_compile_definitions(GlyphLightingGpuTest PRIVATE GLFW_INCLUDE_NONE)
+    target_link_libraries(GlyphLightingGpuTest PRIVATE glfw glad)
+    add_test(NAME GlyphLightingGpu COMMAND GlyphLightingGpuTest)
+    set_tests_properties(GlyphLightingGpu PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" LABELS graphics SKIP_RETURN_CODE 77)
+endif()

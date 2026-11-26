@@ -253,6 +253,7 @@ float calculateVisibility(
 void main()
 {
     vec3 lighting = uAmbientLight;
+    float primaryVisibility = 1.0;
 
     for (int i = 0; i < uLightCount; ++i)
     {
@@ -286,6 +287,10 @@ void main()
             ScreenPosition,
             uLightSourceRadius[i]
         );
+        if (i == 0)
+        {
+            primaryVisibility = visibility;
+        }
 
         lighting +=
         uLightColor[i]
@@ -294,5 +299,5 @@ void main()
         * visibility;
     }
 
-    FragColor = vec4(lighting, 1.0);
+    FragColor = vec4(lighting, primaryVisibility);
 }

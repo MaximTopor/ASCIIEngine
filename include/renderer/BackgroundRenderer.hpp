@@ -6,7 +6,6 @@
 #include "renderer/OcclusionMap.hpp"
 
 #include <glad/gl.h>
-#include <vector>
 
 class BackgroundRenderer
 {
@@ -40,7 +39,8 @@ public:
 
     void setLighting(
         Color ambient,
-        const std::vector<PointLight>& lights
+        std::span<const PointLight> lights,
+        const Camera& camera
     );
 
     void render(

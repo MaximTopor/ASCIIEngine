@@ -1,3 +1,4 @@
+#include "renderer/CpuProfiler.hpp"
 #include "renderer/RenderStats.hpp"
 
 #include <iostream>
@@ -21,6 +22,11 @@ void RenderStats::beginFrame()
     drawCalls = 0;
     visibleTiles = 0;
     uploadedBytes = 0;
+    cachedGlyphCount = 0;
+
+    cachedDrawCalls = 0;
+
+    cachedUploadedBytes = 0;
 
     cpuStart = Clock::now();
 
@@ -99,7 +105,8 @@ void RenderStats::recordDrawCall(
 
 void RenderStats::recordGlyphs(
     std::size_t count,
-    std::size_t bytesPerInstance
+    std::size_t bytesPerInstance,
+    std::size_t groundCount
 )
 {
     glyphCount += count;
@@ -107,9 +114,14 @@ void RenderStats::recordGlyphs(
     uploadedBytes +=
         count * bytesPerInstance;
 
-    if (count > 0)
+    if (groundCount > 0)
     {
-        recordDrawCall(count * 2);
+        recordDrawCall(groundCount * 2);
+    }
+    if (count > groundCount)
+    {
+        recordDrawCall((count - groundCount) * 2);
+        recordDrawCall((count - groundCount) * 2);
     }
 }
 
@@ -184,6 +196,25 @@ void RenderStats::print(
         stream << "N/A\n";
     }
 
+    std::cout
+    << "Cached Glyphs:     "
+    << cachedGlyphCount
+    << '\n';
+
+    std::cout
+        << "Cached Draw Calls: "
+        << cachedDrawCalls
+        << '\n';
+
+    std::cout
+        << "Cached Upload:     "
+        << static_cast<double>(
+            cachedUploadedBytes
+        ) / (1024.0 * 1024.0)
+        << " MiB/frame\n";
+
+
+
     stream
         << "Glyph Instances:   " << glyphCount << "\n"
         << "Triangles:         " << triangleCount << "\n"
@@ -193,5 +224,26 @@ void RenderStats::print(
         << " MiB/frame\n"
         << "==================================\n";
 
+    CpuProfiler::printAndReset(stream);
     std::cout << stream.str();
+}
+void RenderStats::recordCachedGround(
+    std::size_t count,
+    std::size_t draws,
+    std::size_t uploadBytes
+)
+{
+    cachedGlyphCount += count;
+
+    cachedDrawCalls += draws;
+
+    cachedUploadedBytes += uploadBytes;
+
+    glyphCount += count;
+
+    triangleCount += count * 2;
+
+    drawCalls += draws;
+
+    uploadedBytes += uploadBytes;
 }

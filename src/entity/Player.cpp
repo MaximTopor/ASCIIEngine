@@ -36,8 +36,31 @@ bool Player::move(
 
     // Frame-rate-independent movement.
 
+    const auto& waterScale = world.getScale();
+
+    const int tileX = static_cast<int>(
+        std::floor(x / waterScale.cellWidth)
+    );
+
+    const int tileY = static_cast<int>(
+        std::floor(y / waterScale.cellHeight)
+    );
+
+    float speedMultiplier = 1.0f;
+
+    if (world.isInside(tileX, tileY))
+    {
+        if (world.getTile(tileX, tileY).type
+            == TileType::Water)
+        {
+            speedMultiplier = 0.55f;
+        }
+    }
+
     const float distance =
-        movementSpeed * deltaTime;
+        movementSpeed
+        * speedMultiplier
+        * deltaTime;
 
     const float moveX = dx * distance;
     const float moveY = dy * distance;

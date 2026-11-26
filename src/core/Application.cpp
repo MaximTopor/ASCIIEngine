@@ -1,11 +1,23 @@
+#include "renderer/CpuProfiler.hpp"
 #include "core/Application.hpp"
 
 #include <cmath>
 #include <string>
 #include <algorithm>
-#include <vector>
+#include <iostream>
+#include <array>
 
-Application::Application()
+namespace
+{
+    constexpr std::array lightingViews{"Final","Albedo","Normals","Ambient","Directional diffuse",
+        "Point light","Specular","Torch visibility","Roughness","Reflectivity","Legacy light map"};
+    constexpr float torchRange = 220.0f;
+    constexpr float torchSourceRadius = 40.0f;
+    constexpr float torchIntensity = 1.8f;
+    constexpr float torchHeight = 0.74f;
+}
+
+Application::Application(bool benchmark)
     : window(1280, 720, "ASCII Engine"),
       renderer(),
       renderStats(),
@@ -17,11 +29,14 @@ Application::Application()
       glyphRenderer(fontAtlas),
       backgroundRenderer(),
       camera(),
-      world(500, 500, 42),
+      world(benchmark ? 80 : 500, benchmark ? 80 : 500, 42,
+            benchmark ? WorldScale{16, 16, 64, 0.19f, 1.10f}
+                      : WorldScale{24, 28, 64, 0.30f, 1.10f}, benchmark),
       worldRenderer(
           glyphRenderer,
           world,
-          GLYPH_SCALE
+          GLYPH_SCALE,
+          benchmark
       ),
       occlusionMap(world),
       player(0.0f, 0.0f)
@@ -41,7 +56,7 @@ Application::Application()
     );
 
     player.setMovementSpeed(
-        scale.playerHeight * 4.0f
+        112.0f
     );
 
     renderer.setClearColor(
@@ -50,7 +65,12 @@ Application::Application()
         0.06f
     );
 
-    camera.setZoom(1.0f);
+    camera.setZoom(GAMEPLAY_ZOOM);
+    camera.setAngles(GAMEPLAY_AZIMUTH, GAMEPLAY_ELEVATION);
+    if (benchmark)
+    {
+        lighting.setHour(10.5f);
+    }
 
     camera.setPosition(
         player.getX(),
@@ -79,17 +99,29 @@ void Application::run()
 
         lastFrameTime = frameTime;
 
-        window.pollEvents();
-
-        processInput();
+        CpuProfiler::beginFrame();
+        {
+            CpuProfiler::Scope timer(CpuProfiler::Stage::Events);
+            window.pollEvents();
+        }
+        {
+            CpuProfiler::Scope timer(CpuProfiler::Stage::Input);
+            processInput();
+        }
         update(deltaTime);
-        render();
-
-        window.swapBuffers();
+        {
+            CpuProfiler::Scope timer(CpuProfiler::Stage::Render);
+            render();
+        }
+        {
+            CpuProfiler::Scope timer(CpuProfiler::Stage::Swap);
+            window.swapBuffers();
+        }
 
         ++frameCount;
 
         const double currentTime = glfwGetTime();
+        CpuProfiler::endFrame((currentTime - frameTime) * 1000.0);
 
         const double elapsed =
             currentTime - lastFPSTime;
@@ -125,6 +157,8 @@ void Application::run()
                 + time
                 + " | Torch: "
                 + (torchEnabled ? "ON" : "OFF")
+                + (debugCamera ? " | Orbit" : "")
+                + (lightingDebug == 0 ? std::string{} : std::string(" | Lighting: ") + lightingViews[lightingDebug])
                 + renderStats.getTitleSuffix()
             );
 
@@ -135,6 +169,7 @@ void Application::run()
                 fps,
                 frameTime
             );
+            glyphRenderer.printCacheStats(std::cout);
 
             frameCount = 0;
 
@@ -216,105 +251,67 @@ void Application::processInput()
 
     if (window.isKeyPressed(GLFW_KEY_R))
     {
-        camera.setZoom(1.0f);
+        camera.setZoom(GAMEPLAY_ZOOM);
     }
+    const bool debugKey = window.isKeyPressed(GLFW_KEY_F3);
+    if (debugKey && !previousDebugKey)
+    {
+        debugCamera = !debugCamera;
+        if (!debugCamera)
+        {
+            camera.setAngles(GAMEPLAY_AZIMUTH, GAMEPLAY_ELEVATION);
+        }
+    }
+    previousDebugKey = debugKey;
+    const bool lightingKey = window.isKeyPressed(GLFW_KEY_F4);
+    if (lightingKey && !previousLightingKey)
+    {
+        lightingDebug = (lightingDebug + 1) % static_cast<int>(lightingViews.size());
+    }
+    if (window.isKeyPressed(GLFW_KEY_F5))
+    {
+        lightingDebug = 0;
+    }
+    previousLightingKey = lightingKey;
 }
 
 void Application::update(float deltaTime)
 {
-    lighting.update(deltaTime);
-
-    // ====================================
-    // Camera rotation
-    // ====================================
-
-    const float orbit =
-        (
-            window.isKeyPressed(GLFW_KEY_RIGHT)
-            - window.isKeyPressed(GLFW_KEY_LEFT)
-        ) * deltaTime;
-
-    const float tilt =
-        (
-            window.isKeyPressed(GLFW_KEY_UP)
-            - window.isKeyPressed(GLFW_KEY_DOWN)
-        ) * deltaTime;
-
-    if (orbit != 0.0f || tilt != 0.0f)
     {
-        camera.orbit(orbit, tilt);
+        CpuProfiler::Scope timer(CpuProfiler::Stage::WorldUpdate);
+        lighting.update(deltaTime);
     }
-
-    // ====================================
-    // Screen-relative movement input
-    // ====================================
-
-    float inputX = 0.0f;
-    float inputY = 0.0f;
-
-    if (window.isKeyPressed(GLFW_KEY_W))
     {
-        inputY -= 1.0f;
+        CpuProfiler::Scope timer(CpuProfiler::Stage::CameraUpdate);
+        const float orbit = (window.isKeyPressed(GLFW_KEY_RIGHT)
+                           - window.isKeyPressed(GLFW_KEY_LEFT)) * deltaTime;
+        const float tilt = (window.isKeyPressed(GLFW_KEY_UP)
+                          - window.isKeyPressed(GLFW_KEY_DOWN)) * deltaTime;
+        if (debugCamera && (orbit != 0.0f || tilt != 0.0f))
+        {
+            camera.orbit(orbit, tilt);
+        }
     }
-
-    if (window.isKeyPressed(GLFW_KEY_S))
     {
-        inputY += 1.0f;
+        CpuProfiler::Scope timer(CpuProfiler::Stage::PlayerUpdate);
+        const float inputX = window.isKeyPressed(GLFW_KEY_D) - window.isKeyPressed(GLFW_KEY_A);
+        const float inputY = window.isKeyPressed(GLFW_KEY_S) - window.isKeyPressed(GLFW_KEY_W);
+        const float oldX = player.getX();
+        const float oldY = player.getY();
+        if (inputX != 0.0f || inputY != 0.0f)
+        {
+            const auto screen = camera.project(oldX, oldY, 0.0f);
+            const auto target = camera.unproject(screen.x + inputX, screen.y + inputY, 0.0f);
+            player.move(target.x - oldX, target.y - oldY, deltaTime, world);
+        }
+        knight.update(player.getX() - oldX, player.getY() - oldY, deltaTime, world.getScale().playerHeight);
     }
-
-    if (window.isKeyPressed(GLFW_KEY_A))
     {
-        inputX -= 1.0f;
+        CpuProfiler::Scope timer(CpuProfiler::Stage::CameraUpdate);
+        const float follow = 1.0f - std::exp(-11.0f * deltaTime);
+        camera.setPosition(std::lerp(camera.getX(), player.getX(), follow),
+                           std::lerp(camera.getY(), player.getY(), follow));
     }
-
-    if (window.isKeyPressed(GLFW_KEY_D))
-    {
-        inputX += 1.0f;
-    }
-
-    // ====================================
-    // Convert screen direction into
-    // world-space direction
-    // ====================================
-
-    if (inputX != 0.0f || inputY != 0.0f)
-    {
-        const auto screenPosition =
-            camera.project(
-                player.getX(),
-                player.getY(),
-                0.0f
-            );
-
-        const auto targetPosition =
-            camera.unproject(
-                screenPosition.x + inputX,
-                screenPosition.y + inputY,
-                0.0f
-            );
-
-        const float worldDX =
-            targetPosition.x - player.getX();
-
-        const float worldDY =
-            targetPosition.y - player.getY();
-
-        player.move(
-            worldDX,
-            worldDY,
-            deltaTime,
-            world
-        );
-    }
-
-    // ====================================
-    // Camera follow
-    // ====================================
-
-    camera.setPosition(
-        player.getX(),
-        player.getY()
-    );
 }
 
 void Application::render()
@@ -336,6 +333,7 @@ void Application::render()
     renderStats.beginFrame();
 
     camera.setViewportSize(width, height);
+    glyphRenderer.setCamera(camera);
 
     glyphRenderer.setScreenSize(
         width,
@@ -344,6 +342,43 @@ void Application::render()
 
     glyphRenderer.setTime(
         static_cast<float>(glfwGetTime())
+    );
+
+    // World-space wind: direction (x,y), strength in [0,1].
+    // A future WeatherSystem can supply these three values.
+    glyphRenderer.setGrassEnvironment(player.getX(), player.getY(),
+        world.getScale().playerHeight, static_cast<float>(glfwGetTime()),
+        1.0f, 0.35f, 0.30f);
+
+    const auto& scale = world.getScale();
+
+    const int waterTileX =
+        static_cast<int>(
+            std::floor(
+                player.getX() / scale.cellWidth
+            )
+        );
+
+    const int waterTileY =
+        static_cast<int>(
+            std::floor(
+                player.getY() / scale.cellHeight
+            )
+        );
+
+    const bool inWater =
+        world.isInside(waterTileX, waterTileY)
+        &&
+        world.getTile(
+            waterTileX,
+            waterTileY
+        ).type == TileType::Water;
+
+    glyphRenderer.setWaterEnvironment(
+        player.getX(),
+        player.getY(),
+        static_cast<float>(glfwGetTime()),
+        inWater
     );
 
     // Update lighting
@@ -356,6 +391,8 @@ void Application::render()
 
     // Generate Light Map and render background
 
+    {
+    CpuProfiler::Scope timer(CpuProfiler::Stage::LightMap);
     backgroundRenderer.render(
         camera,
         occlusionMap,
@@ -364,6 +401,8 @@ void Application::render()
         world.getScale().cellWidth,
         world.getScale().cellHeight
     );
+
+    }
 
     // Light Map fullscreen triangle
 
@@ -385,7 +424,10 @@ void Application::render()
 
     worldRenderer.render(camera);
 
-    renderPlayer();
+    {
+        CpuProfiler::Scope timer(CpuProfiler::Stage::Knight);
+        renderPlayer();
+    }
 
     // Collect rendering statistics
 
@@ -393,12 +435,23 @@ void Application::render()
         worldRenderer.getVisibleTileCount()
     );
 
+    // Dynamic geometry statistics.
+
     renderStats.recordGlyphs(
         glyphRenderer.getInstanceCount(),
-        sizeof(GlyphInstance)
+        sizeof(GlyphInstance),
+        glyphRenderer.getGroundInstanceCount()
     );
 
-    // Submit glyph instances to GPU
+    // Static GPU geometry statistics.
+
+    renderStats.recordCachedGround(
+        glyphRenderer.getCachedGroundCount(),
+        glyphRenderer.getCachedDrawCalls(),
+        glyphRenderer.getCachedUploadBytes()
+    );
+
+    // Submit all geometry.
 
     glyphRenderer.flush();
 
@@ -409,30 +462,8 @@ void Application::render()
 
 void Application::renderPlayer()
 {
-    const auto& scale =
-        world.getScale();
-
-    const float playerGlyphScale =
-        GLYPH_SCALE
-        * (
-            scale.playerHeight
-            / WorldScale{}.playerHeight
-        );
-
-    glyphRenderer.drawWorld(
-        camera,
-
-        U'@',
-
-        player.getX(),
-        player.getY(),
-
-        scale.playerHeight * 0.5f,
-
-        playerGlyphScale,
-
-        {0.85f, 0.88f, 0.78f}
-    );
+    knight.render(camera, glyphRenderer, player.getX(), player.getY(),
+                  world.getScale().playerHeight, lighting.getHour());
 }
 
 void Application::updateLighting()
@@ -446,27 +477,16 @@ void Application::updateLighting()
         0.06f * ambient.b
     );
 
-    std::vector<PointLight> lights;
+    std::array<PointLight,1> lights;
 
     if (torchEnabled)
     {
-        PointLight torch;
-
-        const auto ground =
-            camera.project(
-                player.getX(),
-                player.getY(),
-                0.0f
-            );
-
-        torch.x = ground.x;
-        torch.y = ground.y;
-
-        torch.radius =
-            220.0f * camera.getZoom();
-
-        torch.sourceRadius =
-            40.0f * camera.getZoom();
+        auto& torch = lights.front();
+        torch.x = player.getX();
+        torch.y = player.getY();
+        torch.z = world.getScale().playerHeight * torchHeight;
+        torch.radius = torchRange;
+        torch.sourceRadius = torchSourceRadius;
 
         const float time =
             static_cast<float>(
@@ -479,7 +499,7 @@ void Application::updateLighting()
             + std::sin(time * 13.0f) * 0.025f;
 
         torch.intensity =
-            1.8f * flicker;
+            torchIntensity * flicker;
 
         torch.color = {
             1.0f,
@@ -487,11 +507,9 @@ void Application::updateLighting()
             0.35f
         };
 
-        lights.push_back(torch);
     }
 
-    backgroundRenderer.setLighting(
-        ambient,
-        lights
-    );
+    const auto activeLights = std::span<const PointLight>(lights).first(torchEnabled ? 1 : 0);
+    backgroundRenderer.setLighting(ambient,activeLights,camera);
+    glyphRenderer.setSurfaceLighting(lighting.getSurfaceLighting(), activeLights, lightingDebug);
 }

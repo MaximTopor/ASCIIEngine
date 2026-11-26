@@ -11,7 +11,8 @@ FontAtlas::FontAtlas(const Font& font)
     constexpr char32_t lastCharacter = 126;
 
     constexpr int columns = 16;
-    constexpr int padding = 2;
+    constexpr int mipLevels = 2;
+    constexpr int padding = 1 << mipLevels;
 
     constexpr int glyphCount =
         lastCharacter - firstCharacter + 1;
@@ -43,8 +44,9 @@ FontAtlas::FontAtlas(const Font& font)
 
     // 2. Calculate atlas dimensions
 
-    const int cellWidth = maxWidth + padding * 2;
-    const int cellHeight = maxHeight + padding * 2;
+    const auto alignCell = [padding](int ink) { return (ink + 3 * padding - 1) / padding * padding; };
+    const int cellWidth = alignCell(maxWidth);
+    const int cellHeight = alignCell(maxHeight);
 
     width = columns * cellWidth;
     height = rows * cellHeight;
@@ -122,7 +124,8 @@ FontAtlas::FontAtlas(const Font& font)
     texture = std::make_unique<Texture>(
         width,
         height,
-        pixels.data()
+        pixels.data(),
+        mipLevels
     );
 }
 

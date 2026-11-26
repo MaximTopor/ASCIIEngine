@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <cmath>
 
+// ============================================
+// CPU CHUNK GENERATION
+// ============================================
+
 VisualChunkCache::Chunk&
 VisualChunkCache::getChunk(
     const World& world,
@@ -14,14 +18,19 @@ VisualChunkCache::getChunk(
 )
 {
     const auto key =
-        std::make_pair(chunkX, chunkY);
+        std::make_pair(
+            chunkX,
+            chunkY
+        );
 
     auto [iterator, inserted] =
         chunks.try_emplace(key);
 
-    Chunk& chunk = iterator->second;
+    Chunk& chunk =
+        iterator->second;
 
-    chunk.lastUsed = frameIndex;
+    chunk.lastUsed =
+        frameIndex;
 
     // Already generated.
 
@@ -30,15 +39,19 @@ VisualChunkCache::getChunk(
         return chunk;
     }
 
-    // Generate all tiles inside the chunk.
+    // Generate every tile in the chunk.
 
-    for (int localY = 0;
-         localY < CHUNK_SIZE;
-         ++localY)
+    for (
+        int localY = 0;
+        localY < CHUNK_SIZE;
+        ++localY
+    )
     {
-        for (int localX = 0;
-             localX < CHUNK_SIZE;
-             ++localX)
+        for (
+            int localX = 0;
+            localX < CHUNK_SIZE;
+            ++localX
+        )
         {
             const int worldX =
                 chunkX * CHUNK_SIZE
@@ -48,10 +61,7 @@ VisualChunkCache::getChunk(
                 chunkY * CHUNK_SIZE
                 + localY;
 
-            if (!world.isInside(
-                    worldX,
-                    worldY
-                ) || world.hasRock(worldX, worldY))
+            if (!world.isInside(worldX, worldY))
             {
                 continue;
             }
@@ -61,11 +71,17 @@ VisualChunkCache::getChunk(
                 + localX;
 
             VegetationGenerator::generate(
-                world.getTile(worldX, worldY),
+                world.getTile(
+                    worldX,
+                    worldY
+                ),
+
                 worldX,
                 worldY,
+
                 cellWidth,
                 cellHeight,
+
                 chunk.tiles[index]
             );
         }
@@ -74,27 +90,37 @@ VisualChunkCache::getChunk(
     return chunk;
 }
 
+// ============================================
+// CPU CACHE EVICTION
+// ============================================
+
 void VisualChunkCache::removeOldChunks()
 {
     while (chunks.size() > MAX_CHUNKS)
     {
-        auto oldest = chunks.end();
+        auto oldest =
+            chunks.end();
 
-        for (auto it = chunks.begin();
-             it != chunks.end();
-             ++it)
+        for (
+            auto it = chunks.begin();
+            it != chunks.end();
+            ++it
+        )
         {
-            // Never remove a chunk used
-            // during the current frame.
-
-            if (it->second.lastUsed == frameIndex)
+            if (
+                it->second.lastUsed
+                == frameIndex
+            )
             {
                 continue;
             }
 
-            if (oldest == chunks.end() ||
-                it->second.lastUsed <
-                    oldest->second.lastUsed)
+            if (
+                oldest == chunks.end()
+                ||
+                it->second.lastUsed
+                    < oldest->second.lastUsed
+            )
             {
                 oldest = it;
             }
@@ -109,6 +135,10 @@ void VisualChunkCache::removeOldChunks()
     }
 }
 
+// ============================================
+// GPU VEGETATION CHUNK RENDERING
+// ============================================
+
 void VisualChunkCache::render(
     const World& world,
     const Camera& camera,
@@ -119,45 +149,81 @@ void VisualChunkCache::render(
 {
     ++frameIndex;
 
-    const float zoom = camera.getZoom();
-    const float playerScale = world.getScale().playerHeight / WorldScale{}.playerHeight;
+    const float zoom =
+        camera.getZoom();
 
-    const auto bounds = camera.visibleGround(5.0f * playerScale);
+    const float playerScale =
+        world.getScale().playerHeight
+        / 64.0f;
 
-    const int startX = std::max(
-        0,
-        static_cast<int>(
-            std::floor(bounds.left / cellWidth)
-        ) - 2
-    );
+    // ========================================
+    // VISIBLE WORLD BOUNDS
+    // ========================================
 
-    const int endX = std::min(
-        world.getWidth() - 1,
-        static_cast<int>(
-            std::ceil(bounds.right / cellWidth)
-        ) + 2
-    );
+    const auto bounds =
+        camera.visibleGround(
+            22.0f * playerScale
+        );
 
-    const int startY = std::max(
-        0,
-        static_cast<int>(
-            std::floor(bounds.top / cellHeight)
-        ) - 2
-    );
+    const int startX =
+        std::max(
+            0,
 
-    const int endY = std::min(
-        world.getHeight() - 1,
-        static_cast<int>(
-            std::ceil(bounds.bottom / cellHeight)
-        ) + 2
-    );
+            static_cast<int>(
+                std::floor(
+                    bounds.left
+                    / cellWidth
+                )
+            ) - 2
+        );
 
-    if (startX > endX || startY > endY)
+    const int endX =
+        std::min(
+            world.getWidth() - 1,
+
+            static_cast<int>(
+                std::ceil(
+                    bounds.right
+                    / cellWidth
+                )
+            ) + 2
+        );
+
+    const int startY =
+        std::max(
+            0,
+
+            static_cast<int>(
+                std::floor(
+                    bounds.top
+                    / cellHeight
+                )
+            ) - 2
+        );
+
+    const int endY =
+        std::min(
+            world.getHeight() - 1,
+
+            static_cast<int>(
+                std::ceil(
+                    bounds.bottom
+                    / cellHeight
+                )
+            ) + 2
+        );
+
+    if (
+        startX > endX
+        || startY > endY
+    )
     {
         return;
     }
 
-    // Visible chunk bounds.
+    // ========================================
+    // VISIBLE CHUNK BOUNDS
+    // ========================================
 
     const int startChunkX =
         startX / CHUNK_SIZE;
@@ -171,7 +237,9 @@ void VisualChunkCache::render(
     const int endChunkY =
         endY / CHUNK_SIZE;
 
-    // Temporary density-based LOD.
+    // ========================================
+    // LEVEL OF DETAIL
+    // ========================================
 
     std::size_t detailStep = 1;
 
@@ -188,81 +256,175 @@ void VisualChunkCache::render(
         detailStep = 2;
     }
 
-    for (int chunkY = startChunkY;
-         chunkY <= endChunkY;
-         ++chunkY)
+    // ========================================
+    // PROCESS VISIBLE CHUNKS
+    // ========================================
+
+    for (
+        int chunkY = startChunkY;
+        chunkY <= endChunkY;
+        ++chunkY
+    )
     {
-        for (int chunkX = startChunkX;
-             chunkX <= endChunkX;
-             ++chunkX)
+        for (
+            int chunkX = startChunkX;
+            chunkX <= endChunkX;
+            ++chunkX
+        )
         {
-            Chunk& chunk = getChunk(
-                world,
-                chunkX,
-                chunkY,
-                cellWidth,
-                cellHeight
-            );
+            // Complete chunk bounds.
 
-            const int firstX = std::max(
-                startX,
-                chunkX * CHUNK_SIZE
-            );
+            const int firstX =
+                chunkX * CHUNK_SIZE;
 
-            const int lastX = std::min(
-                endX,
-                (chunkX + 1) * CHUNK_SIZE - 1
-            );
+            const int firstY =
+                chunkY * CHUNK_SIZE;
 
-            const int firstY = std::max(
-                startY,
-                chunkY * CHUNK_SIZE
-            );
+            const int lastX =
+                std::min(
+                    firstX + CHUNK_SIZE,
+                    world.getWidth()
+                );
 
-            const int lastY = std::min(
-                endY,
-                (chunkY + 1) * CHUNK_SIZE - 1
-            );
+            const int lastY =
+                std::min(
+                    firstY + CHUNK_SIZE,
+                    world.getHeight()
+                );
 
-            for (int y = firstY;
-                 y <= lastY;
-                 ++y)
+            // =================================
+            // CHUNK-LEVEL FRUSTUM CULLING
+            // =================================
+
+            const float centerX =
+                (firstX + lastX)
+                * 0.5f
+                * cellWidth;
+
+            const float centerY =
+                (firstY + lastY)
+                * 0.5f
+                * cellHeight;
+
+            const float padding =
+                (
+                    CHUNK_SIZE
+                    * (cellWidth + cellHeight)
+                    * 0.5f
+
+                    + 32.0f * playerScale
+                ) * zoom;
+
+            if (!camera.isVisible(
+                    camera.project(
+                        centerX,
+                        centerY
+                    ),
+                    padding
+                ))
             {
-                for (int x = firstX;
-                     x <= lastX;
-                     ++x)
+                continue;
+            }
+
+            // =================================
+            // GPU CACHE HIT
+            //
+            // No individual glyph processing.
+            // =================================
+
+            if (
+                renderer.useVegetationChunk(
+                    chunkX,
+                    chunkY,
+
+                    static_cast<int>(
+                        detailStep
+                    )
+                )
+            )
+            {
+                continue;
+            }
+
+            // =================================
+            // GPU CACHE MISS
+            // =================================
+
+            Chunk& chunk =
+                getChunk(
+                    world,
+
+                    chunkX,
+                    chunkY,
+
+                    cellWidth,
+                    cellHeight
+                );
+
+            // Capture the complete chunk.
+            //
+            // Do not cull individual glyphs
+            // based on the current camera.
+
+            for (
+                const auto& glyphs
+                : chunk.tiles
+            )
+            {
+                for (
+                    std::size_t i = 0;
+                    i < glyphs.size();
+                    i += detailStep
+                )
                 {
-                    const int localX =
-                        x - chunkX * CHUNK_SIZE;
+                    const VisualGlyph& glyph =
+                        glyphs[i];
 
-                    const int localY =
-                        y - chunkY * CHUNK_SIZE;
+                    auto animation = glyph.animation;
+                    if (animation.type == AnimationType::Grass)
+                        animation.amplitude = std::min(2.8f, std::sqrt(static_cast<float>(detailStep)));
 
-                    const int index =
-                        localY * CHUNK_SIZE
-                        + localX;
+                    renderer.drawWorld(
+                        camera,
 
-                    const auto& glyphs =
-                        chunk.tiles[index];
+                        glyph.character,
 
-                    for (std::size_t i = 0;
-                         i < glyphs.size();
-                         i += detailStep)
-                    {
-                        const VisualGlyph& glyph =
-                            glyphs[i];
+                        glyph.x,
+                        glyph.y,
 
-                        renderer.drawWorld(camera, glyph.character, glyph.x, glyph.y,
-                                           glyph.z * playerScale, glyph.scale * playerScale,
-                                           glyph.color, glyph.animation, glyph.transform);
-                    }
+                        glyph.z
+                            * playerScale,
+
+                        glyph.scale
+                            * playerScale,
+
+                        glyph.color,
+
+                        animation,
+
+                        glyph.transform,
+
+                        GlyphAnchor::Center,
+
+                        false,
+
+                        true
+                    );
                 }
             }
+
+            // Permanent GPU buffer.
+
+            renderer.finishGroundChunk();
         }
     }
 
     removeOldChunks();
 }
+
+// ============================================
+// CLEAR CPU CACHE
+// ============================================
 
 void VisualChunkCache::clear()
 {

@@ -20,31 +20,12 @@ struct Tile
 
     bool isWalkable() const
     {
-        switch (type)
-        {
-            case TileType::Ground:
-            case TileType::Grass:
-            case TileType::Sand:
-            case TileType::Rock:
-            case TileType::Tree:
-                return true;
-
-            default:
-                return false;
-        }
+        return type != TileType::DeepWater;
     }
 
     float getLightOpacity() const
     {
-        switch (type)
-        {
-            case TileType::Mountain:
-            case TileType::Wall:
-                return 1.0f;
-
-            default:
-                return 0.0f;
-        }
+        return 0.0f;
     }
 
     bool blocksLight() const

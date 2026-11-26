@@ -13,6 +13,7 @@ struct VisualGlyph
     float scale = 1.0f;
 
     Color color;
+    GlyphMaterial material;
 
     GlyphAnimation animation;
 

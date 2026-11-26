@@ -12,6 +12,7 @@
 #include "renderer/Lighting.hpp"
 #include "renderer/OcclusionMap.hpp"
 #include "renderer/RenderStats.hpp"
+#include "renderer/KnightRenderer.hpp"
 
 #include "world/World.hpp"
 #include "entity/Player.hpp"
@@ -21,6 +22,9 @@ class Application
 private:
 
     static constexpr float GLYPH_SCALE = 0.5f;
+    static constexpr float GAMEPLAY_ZOOM = 1.45f;
+    static constexpr float GAMEPLAY_AZIMUTH = 0.37f;
+    static constexpr float GAMEPLAY_ELEVATION = 0.73f;
 
     Lighting lighting;
 
@@ -28,6 +32,10 @@ private:
 
     bool previousLKey = false;
     bool previousPKey = false;
+    bool previousDebugKey = false;
+    bool debugCamera = false;
+    bool previousLightingKey = false;
+    int lightingDebug = 0;
 
     Window window;
     Renderer renderer;
@@ -46,6 +54,7 @@ private:
     OcclusionMap occlusionMap;
 
     Player player;
+    KnightRenderer knight;
 
     void processInput();
 
@@ -59,7 +68,7 @@ private:
 
 public:
 
-    Application();
+    explicit Application(bool benchmark = true);
 
     void run();
 };

@@ -28,6 +28,11 @@ private:
     std::size_t drawCalls = 0;
     std::size_t visibleTiles = 0;
     std::size_t uploadedBytes = 0;
+    std::size_t cachedGlyphCount = 0;
+
+    std::size_t cachedDrawCalls = 0;
+
+    std::size_t cachedUploadedBytes = 0;
 
 public:
 
@@ -39,7 +44,11 @@ public:
     RenderStats& operator=(
         const RenderStats&
     ) = delete;
-
+    void recordCachedGround(
+        std::size_t count,
+        std::size_t draws,
+        std::size_t uploadBytes
+    );
     void beginFrame();
     void endFrame();
 
@@ -49,7 +58,8 @@ public:
 
     void recordGlyphs(
         std::size_t count,
-        std::size_t bytesPerInstance
+        std::size_t bytesPerInstance,
+        std::size_t groundCount
     );
 
     void setVisibleTiles(

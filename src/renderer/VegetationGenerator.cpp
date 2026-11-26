@@ -70,270 +70,52 @@ float VegetationGenerator::densityNoise(
     );
 }
 
-void VegetationGenerator::generate(
-    const Tile& tile,
-    int tileX,
-    int tileY,
-    float cellWidth,
-    float cellHeight,
-    std::vector<VisualGlyph>& output
-)
+void VegetationGenerator::generate(const Tile& tile, int tileX, int tileY,
+    float cellWidth, float cellHeight, std::vector<VisualGlyph>& output)
 {
     output.clear();
-
-    // Vegetation only grows on suitable terrain.
-
-    if (tile.type != TileType::Grass &&
-        tile.type != TileType::Ground &&
-        tile.type != TileType::Tree)
+    if (cellWidth <= 0 || cellHeight <= 0) return;
+    auto state = tileSeed(tileX,tileY);
+    const float noise = densityNoise(tileX,tileY);
+    // Blades per square world unit. Forest and meadow remain densely covered.
+    if (tile.type == TileType::Water ||
+    tile.type == TileType::DeepWater)
     {
         return;
     }
 
-    std::uint32_t state =
-        tileSeed(tileX, tileY);
-
-    const float density =
-        densityNoise(tileX, tileY);
-
-    const float originX =
-        tileX * cellWidth;
-
-    const float originY =
-        tileY * cellHeight;
-
-    // Determine vegetation density.
-
-    int grassCount = 0;
-
-    switch (tile.type)
-    {
-        case TileType::Grass:
-
-            grassCount = static_cast<int>(
-                12.0f + density * density * 29.0f
-            );
-
-            break;
-
-        case TileType::Tree:
-
-            grassCount = static_cast<int>(
-                9.0f + density * density * 24.0f
-            );
-
-            break;
-
-        case TileType::Ground:
-
-            grassCount = static_cast<int>(
-                density * density * 12.0f
-            );
-
-            break;
-
-        default:
-            return;
-    }
-
-    output.reserve(grassCount + 8);
-
-    // Grass symbols.
-
-    static constexpr std::array<char32_t, 7>
-        grassCharacters =
-    {
-        U'|',
-        U'/',
-        U'\\',
-        U'\'',
-        U';',
-        U',',
-        U'!'
-    };
-
-    // Grass colors.
-
-    static constexpr std::array<Color, 6>
-        grassColors =
-    {{
-        {0.15f, 0.26f, 0.17f},
-        {0.21f, 0.34f, 0.21f},
-        {0.28f, 0.40f, 0.23f},
-        {0.36f, 0.48f, 0.29f},
-        {0.43f, 0.53f, 0.33f},
-        {0.18f, 0.30f, 0.24f}
-    }};
-
-    // Generate individual blades of grass.
-
-    for (int i = 0; i < grassCount; ++i)
-    {
-        VisualGlyph glyph;
-
-        const int characterIndex =
-            static_cast<int>(
-                random(state)
-                * grassCharacters.size()
-            );
-
-        glyph.character =
-            grassCharacters[characterIndex];
-
-        glyph.x =
-            originX
-            + random(state) * cellWidth;
-
-        glyph.y =
-            originY
-            + random(state) * cellHeight;
-
-        // Different blade heights.
-
-        glyph.scale =
-            0.055f
-            + random(state) * 0.095f;
-        glyph.z = glyph.scale * 20.0f;
-
-        // Select grass color.
-
-        const int colorIndex =
-            static_cast<int>(
-                random(state)
-                * grassColors.size()
-            );
-
-        glyph.color =
-            grassColors[colorIndex];
-
-        // Additional brightness variation.
-
-        const float brightness =
-            0.75f + random(state) * 0.5f;
-
-        glyph.color.r *= brightness;
-        glyph.color.g *= brightness;
-        glyph.color.b *= brightness;
-
-        // Independent base rotation.
-
-        glyph.transform.rotation =
-            (random(state) - 0.5f) * 0.95f;
-
-        // Independent opacity.
-
-        glyph.transform.opacity =
-            0.55f + random(state) * 0.45f;
-
-        // Rotate around the bottom.
-
-        glyph.transform.pivotX = 0.5f;
-        glyph.transform.pivotY = 1.0f;
-
-        // Spatially coherent wind.
-
-        glyph.animation.type =
-            AnimationType::Wind;
-
-        glyph.animation.phase =
-            glyph.x * 0.025f
-            + glyph.y * 0.018f
-            + random(state) * 0.5f;
-
-        glyph.animation.amplitude =
-            0.04f + random(state) * 0.15f;
-
-        output.push_back(glyph);
-    }
-
-    // Small wildflowers.
-
-    if (tile.type == TileType::Grass &&
-        density > 0.55f &&
-        random(state) < 0.23f)
-    {
-        const int flowerCount =
-            1 + static_cast<int>(
-                random(state) * 3.0f
-            );
-
-        for (int i = 0; i < flowerCount; ++i)
-        {
-            const float flowerX =
-                originX
-                + random(state) * cellWidth;
-
-            const float flowerY =
-                originY
-                + random(state) * cellHeight;
-
-            // Flower stem.
-
-            VisualGlyph stem;
-
-            stem.character = U'|';
-
-            stem.x = flowerX;
-            stem.y = flowerY;
-            stem.z = 2.5f;
-
-            stem.scale = 0.13f;
-
-            stem.color = {
-                0.32f,
-                0.49f,
-                0.25f
-            };
-
-            stem.animation.type =
-                AnimationType::Wind;
-
-            stem.animation.phase =
-                flowerX * 0.025f
-                + flowerY * 0.018f;
-
-            stem.animation.amplitude = 0.08f;
-
-            output.push_back(stem);
-
-            // Flower head.
-
-            VisualGlyph flower;
-
-            flower.character =
-                random(state) < 0.5f
-                    ? U'*'
-                    : U'o';
-
-            flower.x = flowerX;
-            flower.y = flowerY;
-            flower.z = 5.0f;
-
-            flower.scale =
-                0.075f + random(state) * 0.035f;
-
-            if (random(state) < 0.75f)
-            {
-                flower.color = {
-                    0.84f,
-                    0.85f,
-                    0.73f
-                };
-            }
-            else
-            {
-                flower.color = {
-                    0.91f,
-                    0.76f,
-                    0.29f
-                };
-            }
-
-            flower.transform.opacity = 0.9f;
-
-            flower.animation = stem.animation;
-
-            output.push_back(flower);
-        }
+    const float density = 0.54f + 0.16f * noise;
+    const int count = std::clamp(static_cast<int>(std::round(cellWidth*cellHeight*density)),0,1024);
+    if (count == 0) return;
+    const int cols = std::max(1,static_cast<int>(std::ceil(std::sqrt(count*cellWidth/cellHeight))));
+    const int rows = (count+cols-1)/cols;
+    std::vector<int> cells(cols*rows);
+    for (int i=0;i<static_cast<int>(cells.size());++i) cells[i]=i;
+    for (int i=static_cast<int>(cells.size())-1;i>0;--i)
+        std::swap(cells[i],cells[static_cast<int>(random(state)*(i+1))]);
+    constexpr std::array<char32_t,8> palette{U'/',U'\\',U'|',U'v',U'V',U'Y',U'/',U'\\'};
+    constexpr std::array<Color,6> colors{{
+        {0.19f,0.32f,0.12f},{0.25f,0.40f,0.15f},{0.30f,0.45f,0.18f},
+        {0.35f,0.47f,0.20f},{0.20f,0.35f,0.17f},{0.40f,0.50f,0.23f}}};
+    output.reserve(count);
+    for(int i=0;i<count;++i) {
+        const int cell=cells[i];
+        const float u=(cell%cols+0.5f+(random(state)-0.5f)*0.72f)/cols;
+        const float v=(cell/cols+0.5f+(random(state)-0.5f)*0.72f)/rows;
+        VisualGlyph g;
+        g.x=(tileX+u)*cellWidth; g.y=(tileY+v)*cellHeight; g.z=0.0f;
+        const float patch=0.5f+0.5f*std::sin(g.x*0.075f+std::cos(g.y*0.085f)*1.8f);
+        float h=3.5f+4.0f*random(state)+3.0f*patch;
+        if(random(state)<0.08f) h+=2.5f+3.0f*random(state);
+        g.scale=h/36.0f;
+        g.character=palette[static_cast<std::size_t>(random(state)*palette.size())];
+        g.color=colors[static_cast<std::size_t>(random(state)*colors.size())];
+        const float brightness=0.85f+0.26f*random(state);
+        g.color.r*=brightness; g.color.g*=brightness; g.color.b*=brightness;
+        g.transform.rotation=0.0f;
+        g.transform.opacity=1.0f;
+        g.transform.pivotX=0.5f;g.transform.pivotY=1.0f;
+        g.animation={AnimationType::Grass,random(state)*6.2831853f,1.0f};
+        output.push_back(g);
     }
 }

@@ -58,4 +58,24 @@ public:
     float getY() const;
     float getZoom() const;
 
+    float getCosAzimuth() const
+    {
+        return c;
+    }
+
+    float getSinAzimuth() const
+    {
+        return s;
+    }
+
+    float getRise() const
+    {
+        return rise;
+    }
+
+    float getLift() const
+    {
+        return lift;
+    }
+
 };

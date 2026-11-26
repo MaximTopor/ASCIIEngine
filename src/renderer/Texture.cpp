@@ -5,7 +5,8 @@
 Texture::Texture(
     int width,
     int height,
-    const unsigned char* pixels
+    const unsigned char* pixels,
+    int mipLevels
 )
     : width(width),
       height(height)
@@ -47,7 +48,7 @@ Texture::Texture(
     glTexParameteri(
         GL_TEXTURE_2D,
         GL_TEXTURE_MIN_FILTER,
-        GL_LINEAR
+        mipLevels > 0 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR
     );
 
     glTexParameteri(
@@ -68,6 +69,11 @@ Texture::Texture(
         GL_CLAMP_TO_EDGE
     );
 
+    if (mipLevels > 0)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mipLevels);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
